@@ -9,7 +9,7 @@
 
 #define PIN 6
 // Number of lights, address
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(10, PIN, NEO_RGBW);
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(10, PIN, NEO_GRBW);
 
 const int ledPin =  13;      // the number of the LED pin
 const int enablePin = 7;  // Enable pin for ultraSonic sensor
@@ -17,7 +17,7 @@ int ledState = LOW;             // ledState used to set the LED
 unsigned long currentMillis = 0;
 unsigned long previousMillis = 0;        // will store last time LED was updated
 long blinkinterval = 100;           // interval at which to blink (milliseconds)
-const unsigned long int i2cHeartbeatTimeout = 5000; // master must talk to slave within this number of milliseconds or LED will revert to fast pulse
+const unsigned long int i2cHeartbeatTimeout = 5000; // master must talk tho slave within this number of milliseconds or LED will revert to fast pulse
 unsigned long int currenti2c = 0;
 unsigned long int previousi2c = 0;
 float usINPUT1;
@@ -227,14 +227,15 @@ void chase() {
 void seizure(int extremity) {
   uint32_t off = strip.Color(0, 0, 0, 0);
   uint32_t white = strip.Color(0, 0, 0, 255);
-
+  uint32_t magenta = strip.Color(255, 0, 255);
+  
   for(int i = 0; i < 10; i++) {
     strip.setPixelColor(i, off);
   } 
   strip.show();
   delay (extremity);
   for(int j = 0; j < 10; j++) {
-    strip.setPixelColor(j, white);
+    strip.setPixelColor(j, magenta);
   }
   strip.show();
   delay (extremity);

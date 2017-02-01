@@ -52,16 +52,16 @@ void loop() { //main user command loop
   currentMillis = millis();
 
   boolean staleI2C  = ( (currentMillis - previousI2C) > i2cHeartbeatTimeout);
-  
+
   noInterrupts();  // the interrupts could change the value of blinkInterval which can mess with this logic
     // Blink superfast if we haven't heard from the master in a while
-    if (staleI2C) 
+    if (staleI2C)
       blinkInterval = 100;
     else
       blinkInterval = blinkInterval==100 ? 1000 : blinkInterval;
 
     boolean flipNow = ( (currentMillis - previousBlink) >= blinkInterval);
-  interrupts();  
+  interrupts();
 
   if (flipNow) {
     previousBlink = currentMillis;    // save the last time you blinked the LED
@@ -154,7 +154,7 @@ void requestEvent() {
   switch(commandMode) {
     case MODE_IDLE:
       break;
-    case MODE_HELP: 
+    case MODE_HELP:
       handleHelpRequest();
       break;
     case MODE_PING:
@@ -163,13 +163,13 @@ void requestEvent() {
     case MODE_SLOW:
       handleSlowRequest();
       break;
-    case MODE_FAST: 
+    case MODE_FAST:
       handleFastRequest();
       break;
     case MODE_BLINK:
       handleBlinkRequest();
       break;
-    // TODO - add mode handlers  
+    // TODO - add mode handlers
     case MODE_DEFAULT:
     default:
       handleDefaultRequest();
@@ -186,7 +186,7 @@ void receiveEvent(int howMany) { // handles i2c write event from master
     c = readByte();
     bytesLeft--;
   }
-  
+
   switch (c) {
     case '?':
       commandMode = MODE_HELP;
@@ -205,7 +205,7 @@ void receiveEvent(int howMany) { // handles i2c write event from master
       handleBlinkReceive(bytesLeft);
       bytesLeft-=4;
       break;
-    // TODO - recognize additional modes  
+    // TODO - recognize additional modes
     case '\0':
     default:
       commandMode = MODE_DEFAULT;
@@ -219,10 +219,10 @@ void handleHelpRequest() {
   if (serialMode) {
     Serial.println();
     Serial.println("===== Stormgears I2C Device Help =====");
-    Serial.println("    P:  Read 'PING'");
+    Serial.println("    P:  Ping - read I2C Address");
     Serial.println("    F:  Change LED to FAST flash. Read 'FAST'");
     Serial.println("    S:  Change LED to SLOW flash. Read 'SLOW'");
-    Serial.println("    B:  Change LED flash rate directly - pass another long to say how fast (in milliseconds)");    
+    Serial.println("    B:  Change LED flash rate directly - pass another long to say how fast (in milliseconds)");
 // TODO - add menu items
     Serial.println("   \\0:  (or anything unhandled) Read unsingned int counter");
     Serial.println("    ?:  Show this help (otherwise act like \\0)");
@@ -238,17 +238,17 @@ void handleDefaultRequest() {
 }
 
 void handlePingRequest() {
-  writeBytes((void*)"PING", 4, false);    
+  writeBytes((void*)I2C_ADDRESS, 1, true);
 }
 
 void handleSlowRequest() {
   blinkInterval = 1500;
-  writeBytes((void*)"SLOW", 4, false);  
+  writeBytes((void*)"SLOW", 4, false);
 }
 
 void handleFastRequest() {
   blinkInterval = 250;
-  writeBytes((void*)"FAST", 4, false);  
+  writeBytes((void*)"FAST", 4, false);
 }
 
 void handleBlinkRequest() {
@@ -259,7 +259,7 @@ void handleBlinkReceive(int howMany) {
   long interval;
 
   if (howMany == 4) {
-    readLongs(1, &interval);              
+    readLongs(1, &interval);
   } else {
     // shouldn't get here
     interval = 0;
@@ -267,11 +267,11 @@ void handleBlinkReceive(int howMany) {
 
   if(serialMode) {
     Serial.print("Interval now ");
-    Serial.println(interval);    
+    Serial.println(interval);
   }
-    
+
   if (interval < 0)
-    interval = 2000;      
+    interval = 2000;
   blinkInterval = interval;
 }
 
