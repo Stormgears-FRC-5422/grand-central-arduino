@@ -22,6 +22,17 @@ volatile unsigned int counter = 0;           // global counter for default handl
 
 int serialRead = 1;
 
+// To help with serial display
+enum dataType {
+  textType,
+  rawType,
+  byteType,
+  shortType,
+  longType,
+  floatType,
+  doubleType
+};
+
 // blink control
 const int ledPin =  13;             // the number of the LED pin
 int ledState = LOW;                 // ledState used to set the LED
@@ -77,19 +88,56 @@ void loop() { //main user command loop
   if (serialMode && Serial.available() > 0) { //diagnostic menu system starts here
     Serial.println("Looping");
     receiveEvent(5); // call the interrupt handler directly.  We may or may not read this many bytes
+    requestEvent();
   }
-  if (serialMode && flipNow) {    // run repeatedly in serial mode, but not too quickly (just follow the blink)
-    if (commandMode != MODE_IDLE) {
-      requestEvent();
+//  if (serialMode && flipNow) {    // run repeatedly in serial mode, but not too quickly (just follow the blink)
+//    if (commandMode != MODE_IDLE) {
+//      requestEvent();
+//    }
+//  }
+}
+
+
+void printData(byte* array, uint8_t array_size, dataType dType = rawType) {
+  if (dType == textType) {
+    Serial.print((char*)array);
+  }
+  else {
+    Serial.print("[");
+    for (int i = 0; i < array_size;) {
+      switch (dType) {
+        case shortType:
+          i+=sizeof(short);
+          Serial.print(*((short*)(array + i)));
+          break;
+        case longType:
+          Serial.print(*((long*)(array + i)));
+          i+=sizeof(long);
+          break;
+        case floatType:
+          Serial.print(*((float*)(array + i)));
+          i+=sizeof(float);
+          break;
+        case doubleType:
+          Serial.print(*((double*)(array + i)));
+          i+=sizeof(double);
+          break;
+        case rawType:
+        case byteType:
+        default:
+          i+=sizeof(char);
+          break;
+      }
+      Serial.println(" , ");
     }
+    Serial.println("]");
   }
 }
 
 // Helper to write to either the I2C Wire or Serial
-void writeBytes(void* buffer, byte count, bool binary) {
+void writeBytes(void* buffer, byte count, dataType dType = rawType) {
   if (serialMode) {
-    if (binary) printData((byte*)buffer, count);
-    else Serial.println((char*)buffer);
+    printData( (byte*)buffer, count, dType );
   } else {
     Wire.write((byte*)buffer, count);
   }
@@ -113,37 +161,39 @@ byte readByte() {
 }
 
 // Fill a buffer with "count" bytes read from the bus
-void readBytes(int count, byte* buffer)
-{
+void readBytes(byte* buffer, int count) {
   for (int i=0; i<count; i++)
     buffer[i] = readByte();
 }
 
 // Fill a buffer with "count" shorts read from the bus
-void readShorts(int count, short* buffer) {
-  readBytes(count * sizeof(short), (byte*) buffer);
+void readShorts(short* buffer, int count) {
+  readBytes((byte*) buffer, count * sizeof(short));
+}
+
+// Fill a buffer with "count" shorts read from the bus
+void writeShorts(short* buffer, int count) {
+  writeBytes((byte*) buffer, count * sizeof(short), shortType);
 }
 
 // Fill a buffer with "count" longs read from the bus
-void readLongs(int count, long* buffer) {
-  readBytes(count * sizeof(long), (byte*) buffer);
+void readLongs(long* buffer, int count) {
+  readBytes((byte*) buffer, count * sizeof(long));
+}
+
+// Fill a buffer with "count" longs read from the bus
+void writeLongs(long* buffer, int count) {
+  writeBytes((byte*) buffer, count * sizeof(long), longType);
 }
 
 // Fill a buffer with "count" floats read from the bus
 void readFloats(float* buffer, int count) {
-  readBytes(count * sizeof(float), (byte*) buffer);
+  readBytes((byte*) buffer, count * sizeof(float));
 }
 
-void printData(byte* array, uint8_t array_size) {
-  Serial.print("[");
-  for (int i = 0; i < array_size; i++) {
-    Serial.print("0x");
-    Serial.print(array[i],HEX);
-    if (i != array_size - 1) {
-      Serial.print(", ");
-    }
-  }
-  Serial.println("]");
+// Fill a buffer with "count" floats read from the bus
+void writeFloats(float* buffer, int count) {
+  writeBytes((byte*) buffer, count * sizeof(float), floatType);
 }
 
 // function that executes whenever data is requested by master
@@ -233,33 +283,33 @@ void handleHelpRequest() {
 }
 
 void handleDefaultRequest() {
-  writeBytes((void*)&counter, sizeof(unsigned int), true);
+  writeBytes((void*)&counter, sizeof(unsigned int), shortType);
   counter++;
 }
 
 void handlePingRequest() {
-  writeBytes((void*)I2C_ADDRESS, 1, true);
+  writeBytes((void*)I2C_ADDRESS, 1, byteType);
 }
 
 void handleSlowRequest() {
   blinkInterval = 1500;
-  writeBytes((void*)"SLOW", 4, false);
+  writeBytes((void*)"SLOW", 4, textType);
 }
 
 void handleFastRequest() {
   blinkInterval = 250;
-  writeBytes((void*)"FAST", 4, false);
+  writeBytes((void*)"FAST", 4, textType);
 }
 
 void handleBlinkRequest() {
-  writeBytes((void*)blinkInterval, 4, true);
+  writeBytes((void*)blinkInterval, 4, textType);
 }
 
 void handleBlinkReceive(int howMany) {
   long interval;
 
   if (howMany == 4) {
-    readLongs(1, &interval);
+    readLongs(&interval, 1);
   } else {
     // shouldn't get here
     interval = 0;
