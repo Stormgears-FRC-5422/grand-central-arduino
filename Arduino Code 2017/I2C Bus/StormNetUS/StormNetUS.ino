@@ -4,10 +4,9 @@
 
 // TODO choose a unique address
 const char I2C_ADDRESS = 8;    // each device needs its own 7 bit address
-unsigned short int ranges[] = { 0, 0, 0, 0, 0, 0};
 
 // TODO: flip to false if not testing with USB
-const boolean serialMode = true;             // false means I2C
+const boolean serialMode = false;             // false means I2C
 
 // Command modes
 // You can add mode modes here, but please don't remove these
@@ -25,16 +24,16 @@ volatile char commandMode = 0;
 volatile unsigned int counter = 0;           // global counter for default handler
 
 int serialRead = 1;
-#define NUMSENSORS 6
-int usEN[NUMSENSORS] = {11,9,7,4,2,0};
-int usRX[NUMSENSORS] = {12,10,8,5,3,1};
+#define NUMSENSORS 5
+int usEN[NUMSENSORS] = {11,9,7,4,2};
+int usRX[NUMSENSORS] = {12,10,8,5,3};
+byte ranges[NUMSENSORS] = { 0, 0, 0, 0, 0};
 
 SoftwareSerial US[NUMSENSORS] = {SoftwareSerial(12, 13, true), 
                                  SoftwareSerial(10, 13, true), 
                                  SoftwareSerial(8, 13, true),
                                  SoftwareSerial(5, 13, true),
                                  SoftwareSerial(3, 13, true),
-                                 SoftwareSerial(1, 13, true)
                                  };
 
 // blink control
@@ -322,7 +321,7 @@ void handleDefaultRequest() {
 }
 
 void handlePingRequest() {
-  writeBytes((void*)I2C_ADDRESS, 1, true);
+  writeBytes((void*)&I2C_ADDRESS, 1, true);
 }
 
 void handleSlowRequest() {
@@ -361,13 +360,13 @@ void handleBlinkReceive(int howMany) {
 
 void handleUSRequest() {
   if (serialMode) {
-    for (int i =  0; i <= 5; i++) {
+    for (int i =  0; i < NUMSENSORS; i++) {
       Serial.println(ranges[i]);
     }
     Serial.println("we are in US");
   }
   else {
-    writeBytes((void*)ranges, 6, true);
+    writeBytes(ranges, NUMSENSORS, true);
   }
 }
 // TODO - write handlers
