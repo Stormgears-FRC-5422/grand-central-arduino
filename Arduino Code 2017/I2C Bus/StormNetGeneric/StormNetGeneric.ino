@@ -3,7 +3,7 @@
 // TODO choose a unique address
 const char I2C_ADDRESS = 5;    // each device needs its own 7 bit address
 
-// Command modes 
+// Command modes
 // const char MODE_X = 6;        // your mode here
 // TODO: add more modes
 
@@ -35,18 +35,15 @@ void setup() {
 
 void loop() { //main user command loop
   // Originally intialized as false.  This is a one-way switch
-  if (Serial.available())  
+  if (Serial.available())
     serialMode = true;
     
   //========== flash heartbeat (etc) LED =============
   currentMillis = millis();
-
-  boolean staleI2C  = ( (currentMillis - previousI2C) > i2cHeartbeatTimeout);
-
-  // the interrupts could change the value of g_blinkInterval which can mess with this logic 
-  noInterrupts();  
+  // the interrupts could change the value of g_blinkInterval which can mess with this logic
+  noInterrupts();
     // Blink superfast if we haven't heard from the master in a while
-    if (staleI2C)
+    if ( (currentMillis - previousI2C) > i2cHeartbeatTimeout)  // stale
       g_blinkInterval = 100;
     else
       g_blinkInterval = g_blinkInterval==100 ? 1000 : g_blinkInterval;
@@ -94,7 +91,7 @@ void receiveEvent(int howMany) { // handles i2c write event from master
   char c;
 
   // reset the comm timeout clock
-  previousI2C = currentMillis;      
+  previousI2C = currentMillis;
 
   if (howMany > 0) c = readByte();
   switch (c) {
