@@ -1,6 +1,6 @@
 #include <Wire.h>
 
-// Command modes 
+// Command modes
 // You can add mode modes here, but please don't remove these
 const char MODE_IDLE = -1;        // Only for serial loop
 const char MODE_DEFAULT = 0;      // send back a cycle of numbers
@@ -9,16 +9,12 @@ const char MODE_SLOW = 2;         // blink the LED slow.  Request reply with wor
 const char MODE_FAST = 3;         // blink the LED fast.  Request reply with word FAST
 const char MODE_PING = 4;         // send back the word PING on request
 const char MODE_BLINK = 5;        // you tell me how fast to blink. Expects milliseconds as a long
-// TODO: add more modes
 
 char g_i2cAddress = 0;
 volatile char g_commandMode = 0;
 volatile unsigned int g_counter = 0;           // global counter for default handler
-
 volatile long g_blinkInterval = 100;           // interval at which to blink (milliseconds)
 
-
-// TODO: flip to false if not testing with USB
 boolean serialMode = false;             // false means I2C
 
 // To help with serial display
@@ -33,10 +29,6 @@ enum dataType {
 };
 
 void printData(byte* array, uint8_t array_size, dataType dType = rawType) {
-//  Serial.print(array_size);
-//  Serial.print(" : ");
-//  Serial.println(dType);
-  
   if (dType == textType) {
     Serial.println((char*)array);
   }
@@ -93,7 +85,6 @@ boolean readAvailable() {
 byte readByte() {
   if (serialMode) {
     while (!Serial.available()) {;}  // wait for the character to show up
-    
     byte c = Serial.read();
     Serial.print("Received ");
     Serial.println(c, HEX);
@@ -164,7 +155,7 @@ void handleBlinkRequest() {
 
 void handleBlinkReceive() {
   long interval;
-  
+
   readLongs(&interval, 1);
 
   if(serialMode) {
@@ -177,7 +168,7 @@ void handleBlinkReceive() {
   g_blinkInterval = interval;
 }
 
-void receiveBuiltIn(char c) {  
+void receiveBuiltIn(char c) {
   switch(c) {
     case 'P':
       g_commandMode = MODE_PING;
@@ -221,4 +212,3 @@ void requestBuiltIn() {
       handleDefaultRequest();
   }
 }
-
