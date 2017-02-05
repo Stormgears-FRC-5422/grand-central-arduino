@@ -37,7 +37,7 @@ void loop() { //main user command loop
   // Originally intialized as false.  This is a one-way switch
   if (Serial.available())
     serialMode = true;
-    
+
   //========== flash heartbeat (etc) LED =============
   currentMillis = millis();
   // the interrupts could change the value of g_blinkInterval which can mess with this logic
@@ -89,7 +89,6 @@ void requestEvent() {
 //================================
 void receiveEvent(int howMany) { // handles i2c write event from master
   char c;
-
   // reset the comm timeout clock
   previousI2C = currentMillis;
 
