@@ -9,6 +9,7 @@ const char MODE_GetIR = 6;        // your mode here
 // TODO: add more modes
 
 //IR constants
+#define NUMSENSORS 6
 #define IR1_ANL 0  //pin assignment
 #define IR2_ANL 1  //pin assignment
 #define IR3_ANL 2  //pin assignment
@@ -19,13 +20,13 @@ const char MODE_GetIR = 6;        // your mode here
 #define GP2Y0A21YK0F 2 // 10-80 centimeter range
 #define GP2Y0A60SZLF 3 // 20-150 centimeter range
 short int IR_distances[] = { 0, 0, 0, 0, 0, 0}; // in centimeters
-short int IR_config[6][6] = { //define what Sharp IR sensors are plugged in where
+short int IR_config[NUMSENSORS][2] = { //define what Sharp IR sensors are plugged in where
    {GP2Y0A51SK0F, IR1_ANL},
    {GP2Y0A51SK0F, IR2_ANL},
    {GP2Y0A21YK0F, IR3_ANL},
    {GP2Y0A21YK0F, IR4_ANL},
    {GP2Y0A60SZLF, IR5_ANL},
-   {GP2Y0A60SZLF, IR6_ANL}  
+   {GP2Y0A60SZLF, IR6_ANL}
 };
 
 // blink control
@@ -38,7 +39,7 @@ const unsigned long int i2cHeartbeatTimeout = 15000; // master must talk to slav
 volatile unsigned long previousI2C = 0;   // will store last time LED was updated
 
 void setup() {
- analogReference(DEFAULT);
+  analogReference(DEFAULT);
   g_i2cAddress = I2C_ADDRESS;
   previousI2C = millis();           // start the timer now
   previousBlink = previousI2C;
@@ -88,41 +89,49 @@ void loop() { //main user command loop
     receiveEvent(5); // call the interrupt handler directly.  We may or may not read this many bytes
     requestEvent();
   }
-IRLoop();
+  IRLoop();
 }
 
 void IRLoop() {
-for (int i=0; i<6; i++)
-    IR_distances[i] = GetSharpIR(IR_config[i][0],IR_config[i][1]);
- 
+  short IR_distance;
+
+  for (int i=0; i<NUMSENSORS; i++) {
+    IR_distance = GetSharpIR(IR_config[i][0],IR_config[i][1]);
+    // need to protect the assignment to the global array
+    // since the assignment could be interrupted by an I2C request halfway through.
+    // This is true since the arduino is an 8 bit processor, and the
+    // target is 16 bits - it takes two cycles to make the assignment
+    noInterrupts();
+      IR_distances[i] = IR_distance;
+    interrupts();
+  }
+
 }
 
 
 short int GetSharpIR(short int sensortype, short int pin) {
-short int distance;
-switch (sensortype){
-  case 1: // GP2Y0A51SK0F 2-15 centimeter range
-    distance = 970/(analogRead(pin)-13);
-    if(distance > 15) return 16;
-    else if(distance < 2) return 1;
-    else return distance;
-    break;
-  case 2: // GP2Y0A21YK0F 10-80 centimeter range
-    distance = 4800/(analogRead(pin)-20);
-    if(distance > 80) return 81;
-    else if(distance < 10) return 9;
-    else return distance;
-    break;
-  case 3: // GP2Y0A60SZLF 20-150 centimeter range
-    distance = 9462/(analogRead(pin)-17);
-    if(distance > 150) return 151;
-    else if(distance < 20) return 19;
-    else return distance;
-    break;
-}
+  short int distance;
+  switch (sensortype) {
+    case 1: // GP2Y0A51SK0F 2-15 centimeter range
+      distance = 970/(analogRead(pin)-13);
+      if(distance > 15) return 16;
+      else if(distance < 2) return 1;
+      else return distance;
+      break;
+    case 2: // GP2Y0A21YK0F 10-80 centimeter range
+      distance = 4800/(analogRead(pin)-20);
+      if(distance > 80) return 81;
+      else if(distance < 10) return 9;
+      else return distance;
+      break;
+    case 3: // GP2Y0A60SZLF 20-150 centimeter range
+      distance = 9462/(analogRead(pin)-17);
+      if(distance > 150) return 151;
+      else if(distance < 20) return 19;
+      else return distance;
+      break;
+    }
 
-
-  
 }
 
 // function that executes whenever data is requested by master
@@ -181,7 +190,7 @@ void handleHelpRequest() {
 // TODO - add menu items
     Serial.println("   \\0:  (or anything unhandled) Read unsingned int counter");
     Serial.println("    ?:  Show this help (otherwise act like \\0)");
-    g_commandMode = MODE_IDLE;  // This only makes sense in serialMode  
+    g_commandMode = MODE_IDLE;  // This only makes sense in serialMode
   }
   else // move on - nothing to see here
     handleDefaultRequest();
@@ -191,15 +200,10 @@ void handleHelpRequest() {
 
 void handleGetIRRequest() {
   if (serialMode) {
-    for (int i =  0; i <= 5; i++) {
-      Serial.print(IR_distances[i]); Serial.print("\t\t");
-    }
     Serial.println("we are in IR");
   }
-  else {
-  //  writeBytes((void*)IR_distances, 6, true);
-  }
+
+  writeShorts(IR_distances, NUMSENSORS, shortType);
 }
 
 // TODO - write handlers - see StormNetCommon.h for examples
-
