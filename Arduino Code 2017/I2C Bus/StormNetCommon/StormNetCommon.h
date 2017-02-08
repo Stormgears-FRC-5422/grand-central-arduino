@@ -15,7 +15,10 @@ volatile char g_commandMode = 0;
 volatile unsigned int g_counter = 0;           // global counter for default handler
 volatile long g_blinkInterval = 100;           // interval at which to blink (milliseconds)
 
-boolean serialMode = false;             // false means I2C
+// false means I2C - start with false by default
+// this should flip to true in loop() if serial.available()
+// that's the best way I can figure out how to tell if the usb is attached
+boolean serialMode = false;
 
 // To help with serial display
 enum dataType {
@@ -67,14 +70,14 @@ void printData(byte* array, uint8_t array_size, dataType dType = rawType) {
 }
 
 // Helper to write to either the I2C Wire or Serial
-void writeBytes(void* buffer, byte count, dataType dType = rawType) {
+void writeBytes(void* buffer, byte count, dataType dType = rawType, boolean serialMode = false) {
   if (serialMode) {
     printData( (byte*)buffer, count, dType );
-  } else {
-    Wire.write((byte*)buffer, count);
   }
+  Wire.write((byte*)buffer, count);
 }
 
+// TODO Not sure what to do with this if both I2C and Serial are on
 boolean readAvailable() {
   if (serialMode) return Serial.available();
   else return Wire.available();
@@ -105,8 +108,8 @@ void readShorts(short* buffer, int count) {
 }
 
 // Fill a buffer with "count" shorts read from the bus
-void writeShorts(short* buffer, int count) {
-  writeBytes((byte*) buffer, count * sizeof(short), shortType);
+void writeShorts(short* buffer, int count, boolean serialMode = false) {
+  writeBytes((byte*) buffer, count * sizeof(short), shortType, serialMode);
 }
 
 // Fill a buffer with "count" longs read from the bus
@@ -115,8 +118,8 @@ void readLongs(long* buffer, int count) {
 }
 
 // Fill a buffer with "count" longs read from the bus
-void writeLongs(long* buffer, int count) {
-  writeBytes((byte*) buffer, count * sizeof(long), longType);
+void writeLongs(long* buffer, int count, boolean serialMode = false) {
+  writeBytes((byte*) buffer, count * sizeof(long), longType, serialMode);
 }
 
 // Fill a buffer with "count" floats read from the bus
@@ -125,32 +128,32 @@ void readFloats(float* buffer, int count) {
 }
 
 // Fill a buffer with "count" floats read from the bus
-void writeFloats(float* buffer, int count) {
-  writeBytes((byte*) buffer, count * sizeof(float), floatType);
+void writeFloats(float* buffer, int count, boolean serialMode = false) {
+  writeBytes((byte*) buffer, count * sizeof(float), floatType, serialMode);
 }
 
 // Handlers
 void handleDefaultRequest() {
-  writeBytes((void*)&g_counter, sizeof(unsigned int), shortType);
+  writeBytes((void*)&g_counter, sizeof(unsigned int), shortType, serialMode);
   g_counter++;
 }
 
 void handlePingRequest() {
-  writeBytes((void*)&g_i2cAddress, 1, byteType);
+  writeBytes((void*)&g_i2cAddress, 1, byteType, serialMode);
 }
 
 void handleSlowRequest() {
   g_blinkInterval = 1500;
-  writeBytes((void*)"SLOW", 4, textType);
+  writeBytes((void*)"SLOW", 4, textType, serialMode);
 }
 
 void handleFastRequest() {
   g_blinkInterval = 250;
-  writeBytes((void*)"FAST", 4, textType);
+  writeBytes((void*)"FAST", 4, textType, serialMode);
 }
 
 void handleBlinkRequest() {
-  writeBytes((void*)&g_blinkInterval, 4, longType);
+  writeBytes((void*)&g_blinkInterval, 4, longType, serialMode);
 }
 
 void handleBlinkReceive() {
