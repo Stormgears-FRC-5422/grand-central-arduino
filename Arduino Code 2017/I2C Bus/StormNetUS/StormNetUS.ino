@@ -1,36 +1,22 @@
-#include <Wire.h>
+#include "StormNetCommon.h"
 #include <SoftwareSerial.h>
 
 
 // TODO choose a unique address
 const char I2C_ADDRESS = 8;    // each device needs its own 7 bit address
 
-// TODO: flip to false if not testing with USB
-const boolean serialMode = false;             // false means I2C
-
 // Command modes
-// You can add mode modes here, but please don't remove these
-const char MODE_IDLE = -1;        // Only for serial loop
-const char MODE_DEFAULT = 0;      // send back a cycle of numbers
-const char MODE_HELP = 1;         // Serial only (!) Display help
-const char MODE_SLOW = 2;         // blink the LED slow.  Request reply with word SLOW
-const char MODE_FAST = 3;         // blink the LED fast.  Request reply with word FAST
-const char MODE_PING = 4;         // send back the word PING on request
-const char MODE_BLINK = 5;        // you tell me how fast to blink. Expects milliseconds as a long
-const char MODE_US = 6;
+// const char MODE_X = 6;        // your mode here
 // TODO: add more modes
+const char MODE_US = 6;
 
-volatile char commandMode = 0;
-volatile unsigned int counter = 0;           // global counter for default handler
-
-int serialRead = 1;
 #define NUMSENSORS 5
 int usEN[NUMSENSORS] = {11,9,7,4,2};
 int usRX[NUMSENSORS] = {12,10,8,5,3};
 byte ranges[NUMSENSORS] = { 0, 0, 0, 0, 0};
 
-SoftwareSerial US[NUMSENSORS] = {SoftwareSerial(12, 13, true), 
-                                 SoftwareSerial(10, 13, true), 
+SoftwareSerial US[NUMSENSORS] = {SoftwareSerial(12, 13, true),
+                                 SoftwareSerial(10, 13, true),
                                  SoftwareSerial(8, 13, true),
                                  SoftwareSerial(5, 13, true),
                                  SoftwareSerial(3, 13, true),
@@ -47,6 +33,7 @@ const unsigned long int i2cHeartbeatTimeout = 15000; // master must talk to slav
 volatile unsigned long previousI2C = 0;   // will store last time LED was updated
 
 void setup() {
+  g_i2cAddress = I2C_ADDRESS;
   previousI2C = millis();           // start the timer now
   previousBlink = previousI2C;
   pinMode(ledPin, OUTPUT);          // set the digital pin as output
@@ -54,13 +41,11 @@ void setup() {
   Wire.onRequest(requestEvent);     // register event
   Wire.onReceive(receiveEvent);     // register event
 
-  if (serialMode) {
-    Serial.begin(9600);             // start serial port at 9600 bps and wait for port to open
-    Serial.println();
-    Serial.println("Stormgears I2C Slave Device Diagnostic System");
-    Serial.println("Hit '?' for Help");
-  }
-  
+  Serial.begin(9600);             // start serial port at 9600 bps and wait for port to open
+  Serial.println();
+  Serial.println("Stormgears I2C Slave Device Diagnostic System");
+  Serial.println("Hit '?' for Help");
+
   for(int i = 0; i < NUMSENSORS; i++) {
      pinMode(usEN[i], OUTPUT);
      pinMode(usRX[i], INPUT);
@@ -70,19 +55,21 @@ void setup() {
 }
 
 void loop() { //main user command loop
+  // Flip to serial mode if there is anything to be read. Otherwise back to I2C mode
+  serialMode = Serial.available();
+
   //========== flash heartbeat (etc) LED =============
   currentMillis = millis();
 
-  boolean staleI2C  = ( (currentMillis - previousI2C) > i2cHeartbeatTimeout);
+  // the interrupts could change the value of g_blinkInterval which can mess with this logic
+  noInterrupts();
+    // Blink superfast if we haven't heard from the master in a while
+    if ( (currentMillis - previousI2C) > i2cHeartbeatTimeout)  // stale
+      g_blinkInterval = 100;
+    else
+      g_blinkInterval = g_blinkInterval==100 ? 1000 : g_blinkInterval;
 
-  noInterrupts();  // the interrupts could change the value of blinkInterval which can mess with this logic
-  // Blink superfast if we haven't heard from the master in a while
-  if (staleI2C)
-    blinkInterval = 100;
-  else
-    blinkInterval = blinkInterval == 100 ? 1000 : blinkInterval;
-
-  boolean flipNow = ( (currentMillis - previousBlink) >= blinkInterval);
+    boolean flipNow = ( (currentMillis - previousBlink) >= g_blinkInterval);
   interrupts();
 
   if (flipNow) {
@@ -97,14 +84,10 @@ void loop() { //main user command loop
 
   // Check for serial input.  Note that i2c input happens through interrupts, not here.
   if (serialMode && Serial.available() > 0) { //diagnostic menu system starts here
-    Serial.println("Looping");
     receiveEvent(5); // call the interrupt handler directly.  We may or may not read this many bytes
+    requestEvent();
   }
-  if (serialMode && flipNow) {    // run repeatedly in serial mode, but not too quickly (just follow the blink)
-    if (commandMode != MODE_IDLE) {
-      requestEvent();
-    }
-  }
+
   usLoop();
 }
 
@@ -131,9 +114,9 @@ int stormGetRange(SoftwareSerial US, int usEN) {
   } else {
     digitalWrite(usEN, LOW);
     return 0;
-  } 
+  }
   }  while (buffer[0]!='R');  //wait until you get the first character of the next reading
-  
+
   startTime = millis();
   while (!US.available() && (currentTime = (millis() - startTime)) < 49); //wait for character or time out
   if (currentTime < 49) {
@@ -163,137 +146,50 @@ int stormGetRange(SoftwareSerial US, int usEN) {
   return atoi(&buffer[1]);
 }
 
-// Helper to write to either the I2C Wire or Serial
-void writeBytes(void* buffer, byte count, bool binary) {
-  if (serialMode) {
-    if (binary) printData((byte*)buffer, count);
-    else Serial.println((char*)buffer);
-  } else {
-    Wire.write((byte*)buffer, count);
-  }
-}
-
-boolean readAvailable() {
-  if (serialMode) return Serial.available();
-  else return Wire.available();
-}
-
-// ultimately dealing with single byte reads.
-// this could be optimized a bit, but this is pretty clear.
-byte readByte() {
-  if (serialMode) {
-    byte c = Serial.read();
-    Serial.print("Received ");
-    Serial.println(c, HEX);
-    return c;
-  }
-  else return (byte)Wire.read();
-}
-
-// Fill a buffer with "count" bytes read from the bus
-void readBytes(int count, byte* buffer)
-{
-  for (int i = 0; i < count; i++)
-    buffer[i] = readByte();
-}
-
-// Fill a buffer with "count" shorts read from the bus
-void readShorts(int count, short* buffer) {
-  readBytes(count * sizeof(short), (byte*) buffer);
-}
-
-// Fill a buffer with "count" longs read from the bus
-void readLongs(int count, long* buffer) {
-  readBytes(count * sizeof(long), (byte*) buffer);
-}
-
-// Fill a buffer with "count" floats read from the bus
-void readFloats(float* buffer, int count) {
-  readBytes(count * sizeof(float), (byte*) buffer);
-}
-
-void printData(byte* array, uint8_t array_size) {
-  Serial.print("[");
-  for (int i = 0; i < array_size; i++) {
-    Serial.print("0x");
-    Serial.print(array[i], HEX);
-    if (i != array_size - 1) {
-      Serial.print(", ");
-    }
-  }
-  Serial.println("]");
-}
-
 // function that executes whenever data is requested by master
 // this function is registered as an event, see setup()
 // this function can also be called at other times (say via events coming through Serial)
 void requestEvent() {
   previousI2C = currentMillis;      // reset the comm timeout clock
-  switch (commandMode) {
-    case MODE_IDLE:
+  switch(g_commandMode) {
+// TODO - new modes
+//    case MODE_X:
+//      handleXRequest();
+//      break;
+    case MODE_US:
+      handleUSRequest();
       break;
     case MODE_HELP:
       handleHelpRequest();
       break;
-    case MODE_PING:
-      handlePingRequest();
-      break;
-    case MODE_SLOW:
-      handleSlowRequest();
-      break;
-    case MODE_FAST:
-      handleFastRequest();
-      break;
-    case MODE_BLINK:
-      handleBlinkRequest();
-      break;
-    case MODE_US:
-      handleUSRequest();
-      break;
-    case MODE_DEFAULT:
     default:
-      handleDefaultRequest();
+      requestBuiltIn();
   }
 }
 
 //================================
 void receiveEvent(int howMany) { // handles i2c write event from master
-  int bytesLeft = howMany;
   char c;
+  // reset the comm timeout clock
+  previousI2C = currentMillis;
 
-  previousI2C = currentMillis;      // reset the comm timeout clock
-  if (bytesLeft > 0) {
-    c = readByte();
-    bytesLeft--;
-  }
-
+  if (howMany > 0) c = readByte();
   switch (c) {
-    case '?':
-      commandMode = MODE_HELP;
-      break;
-    case 'P':
-      commandMode = MODE_PING;
-      break;
-    case 'S':
-      commandMode = MODE_SLOW;
-      break;
-    case 'F':
-      commandMode = MODE_FAST;
-      break;
-    case 'B':
-      commandMode = MODE_BLINK;
-      handleBlinkReceive(bytesLeft);
-      bytesLeft -= 4;
-      break;
+// TODO - new modes
+//    case 'X':
+//      g_commandMode = MODE_X;
+//      break;
     case 'U':
-      commandMode = MODE_US;
+      g_commandMode = MODE_US;
       break;
-    case '\0':
+    case '?':
+      g_commandMode = MODE_HELP;
+      break;
     default:
-      commandMode = MODE_DEFAULT;
+      receiveBuiltIn(c);
   }
 
-  while (readAvailable()) c = readByte(); // in case there is other stuff sent that needs to be collected - don't expect this
+  while (readAvailable()) c=readByte(); // in case there is other stuff sent that needs to be collected - don't expect this
 }
 
 //================================
@@ -309,64 +205,16 @@ void handleHelpRequest() {
     // TODO - add menu items
     Serial.println("   \\0:  (or anything unhandled) Read unsingned int counter");
     Serial.println("    ?:  Show this help (otherwise act like \\0)");
-    commandMode = MODE_IDLE;  // This only makes sense in serialMode
+    g_commandMode = MODE_IDLE;  // This only makes sense in serialMode
   }
   else // move on - nothing to see here
     handleDefaultRequest();
 }
 
-void handleDefaultRequest() {
-  writeBytes((void*)&counter, sizeof(unsigned int), true);
-  counter++;
-}
-
-void handlePingRequest() {
-  writeBytes((void*)&I2C_ADDRESS, 1, true);
-}
-
-void handleSlowRequest() {
-  blinkInterval = 1500;
-  writeBytes((void*)"SLOW", 4, false);
-}
-
-void handleFastRequest() {
-  blinkInterval = 250;
-  writeBytes((void*)"FAST", 4, false);
-}
-
-void handleBlinkRequest() {
-  writeBytes((void*)blinkInterval, 4, true);
-}
-
-void handleBlinkReceive(int howMany) {
-  long interval;
-
-  if (howMany == 4) {
-    readLongs(1, &interval);
-  } else {
-    // shouldn't get here
-    interval = 0;
-  }
-
-  if (serialMode) {
-    Serial.print("Interval now ");
-    Serial.println(interval);
-  }
-
-  if (interval < 0)
-    interval = 2000;
-  blinkInterval = interval;
-}
-
 void handleUSRequest() {
-  if (serialMode) {
-    for (int i =  0; i < NUMSENSORS; i++) {
-      Serial.println(ranges[i]);
-    }
+  if (serialMode)
     Serial.println("we are in US");
-  }
-  else {
-    writeBytes(ranges, NUMSENSORS, true);
-  }
+
+  writeBytes(ranges, NUMSENSORS, byteType, serialMode);
 }
 // TODO - write handlers

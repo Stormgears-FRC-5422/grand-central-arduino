@@ -57,9 +57,8 @@ void setup() {
 }
 
 void loop() { //main user command loop
-  // Originally intialized as false.  This is a one-way switch
-  if (Serial.available())
-    serialMode = true;
+  // Flip to serial mode if there is anything to be read. Otherwise back to I2C mode
+  serialMode = Serial.available();
 
   //========== flash heartbeat (etc) LED =============
   currentMillis = millis();
@@ -97,6 +96,7 @@ void IRLoop() {
 
   for (int i=0; i<NUMSENSORS; i++) {
     IR_distance = GetSharpIR(IR_config[i][0],IR_config[i][1]);
+
     // need to protect the assignment to the global array
     // since the assignment could be interrupted by an I2C request halfway through.
     // This is true since the arduino is an 8 bit processor, and the
@@ -130,6 +130,8 @@ short int GetSharpIR(short int sensortype, short int pin) {
       else if(distance < 20) return 19;
       else return distance;
       break;
+    default:
+      return -1;
     }
 
 }
@@ -167,6 +169,9 @@ void receiveEvent(int howMany) { // handles i2c write event from master
 //    case 'X':
 //      g_commandMode = MODE_X;
 //      break;
+    case 'I':
+      g_commandMode = MODE_GetIR;
+      break;
     case '?':
       g_commandMode = MODE_HELP;
       break;
@@ -196,14 +201,12 @@ void handleHelpRequest() {
     handleDefaultRequest();
 }
 
-
-
 void handleGetIRRequest() {
   if (serialMode) {
     Serial.println("we are in IR");
   }
 
-  writeShorts(IR_distances, NUMSENSORS, shortType);
+  writeShorts(IR_distances, NUMSENSORS, serialMode);
 }
 
 // TODO - write handlers - see StormNetCommon.h for examples

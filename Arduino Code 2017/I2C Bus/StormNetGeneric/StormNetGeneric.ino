@@ -34,9 +34,8 @@ void setup() {
 }
 
 void loop() { //main user command loop
-  // Originally intialized as false.  This is a one-way switch
-  if (Serial.available())
-    serialMode = true;
+  // Flip to serial mode if there is anything to be read. Otherwise back to I2C mode
+  serialMode = Serial.available();
 
   //========== flash heartbeat (etc) LED =============
   currentMillis = millis();
