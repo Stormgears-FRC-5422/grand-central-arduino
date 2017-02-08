@@ -13,7 +13,7 @@ const char MODE_US = 6;
 #define NUMSENSORS 5
 int usEN[NUMSENSORS] = {11,9,7,4,2};
 int usRX[NUMSENSORS] = {12,10,8,5,3};
-byte ranges[NUMSENSORS] = { 0, 0, 0, 0, 0};
+volatile byte ranges[NUMSENSORS] = { 0, 0, 0, 0, 0};
 
 SoftwareSerial US[NUMSENSORS] = {SoftwareSerial(12, 13, true),
                                  SoftwareSerial(10, 13, true),

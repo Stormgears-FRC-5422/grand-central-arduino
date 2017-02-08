@@ -19,7 +19,7 @@ const char MODE_GetIR = 6;        // your mode here
 #define GP2Y0A51SK0F 1 // 2-15 centimeter range
 #define GP2Y0A21YK0F 2 // 10-80 centimeter range
 #define GP2Y0A60SZLF 3 // 20-150 centimeter range
-short int IR_distances[] = { 0, 0, 0, 0, 0, 0}; // in centimeters
+volatile short int IR_distances[] = { 0, 0, 0, 0, 0, 0}; // in centimeters
 short int IR_config[NUMSENSORS][2] = { //define what Sharp IR sensors are plugged in where
    {GP2Y0A51SK0F, IR1_ANL},
    {GP2Y0A51SK0F, IR2_ANL},
