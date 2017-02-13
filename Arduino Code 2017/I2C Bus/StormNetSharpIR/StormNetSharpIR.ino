@@ -6,6 +6,7 @@ const char I2C_ADDRESS = 11;    // each device needs its own 7 bit address
 // Command modes
 // const char MODE_X = 6;        // your mode here
 const char MODE_GetIR = 6;        // your mode here
+const chat MODE_GetGearState = 7;
 // TODO: add more modes
 
 //IR constants
@@ -38,6 +39,28 @@ unsigned long previousBlink = 0;
 const unsigned long int i2cHeartbeatTimeout = 15000; // master must talk to slave within this number of milliseconds or LED will revert to fast pulse
 volatile unsigned long previousI2C = 0;   // will store last time LED was updated
 
+//TODO: have to add the gear dropping and gear exiting states afterwards 
+enum gear_states {
+  EMPTY_BIN = 0, // Bin is empty 
+  GEAR_LIFTING, // Gear is leaving, no longer present but has not broken through the beam sensor 
+  FULL_BIN, // Gear is in the bin and is sensed by the line sensor 
+  GEAR_EXITING, // Gear is breaking beam on the way out 
+  UNKNOWN_STATE // Undefined states (Need more sensor data)  
+};
+
+#define NUM_LINE_PINS 5 // Number of pins for the line sensor 
+int lineSensorPins[NUM_LINE_PINS] = {12,11,10,9,8};
+int lineSensorVal[NUM_LINE_PINS] = {0,0,0,0,0};
+int analogVal = 0;
+int analogPin = 0;
+
+// Booleans to determine the gear states 
+boolean beamBroken = false;
+boolean gearPresent = false;
+
+// Holds our next state 
+short currentState = EMPTY_BIN;
+
 void setup() {
   analogReference(DEFAULT);
   g_i2cAddress = I2C_ADDRESS;
@@ -47,6 +70,10 @@ void setup() {
   Wire.begin(I2C_ADDRESS);          // join i2c bus
   Wire.onRequest(requestEvent);     // register event
   Wire.onReceive(receiveEvent);     // register event
+
+  for(int i = 0; i < NUM_LINE_PINS; i++) {
+    pinMode(lineSensorPins[i], INPUT);
+  }
 
   // Apparently there isn't a way to tell whether the Serial usb is connected or not, but this should be harmless if not.
   // note that Serial resets when the usb cable is connected, so we can be sure that setup will be called at that time
@@ -89,6 +116,7 @@ void loop() { //main user command loop
     requestEvent();
   }
   IRLoop();
+  StateLoop();
 }
 
 void IRLoop() {
@@ -108,6 +136,30 @@ void IRLoop() {
 
 }
 
+void StateLoop() {
+   analogVal = analogRead(0);
+  if(analogVal > 500) {
+    beamBroken = true; // Gear was detected (Something entered the gear beam ) 
+  }
+  else if (analogVal < 500) {
+   beamBroken = false;
+  }
+  
+  for(int i = 0; i < NUM_LINE_PINS; i++) {
+    lineSensorVal[i] = digitalRead(lineSensorPins[i]);
+  }
+
+  for(int i = 0; i < NUM_LINE_PINS; i++) {
+    if(lineSensorVal[i] == 0) {
+      gearPresent = true;
+      break;
+    }
+    else 
+     gearPresent = false;
+  }
+
+  determineNextState();
+}
 
 short int GetSharpIR(short int sensortype, short int pin) {
   short int distance;
@@ -136,6 +188,77 @@ short int GetSharpIR(short int sensortype, short int pin) {
 
 }
 
+void determineNextState() { 
+  short nextState; 
+  switch(currentState) { 
+    case FULL_BIN:case GEAR_LIFTING:
+      if(gearPresent && !beamBroken) 
+        nextState = FULL_BIN;
+      else if(gearPresent && beamBroken) 
+        nextState = UNKNOWN_STATE;
+      else if(!gearPresent && !beamBroken) 
+        nextState = GEAR_LIFTING;
+      else if(!gearPresent && beamBroken) 
+        nextState = GEAR_EXITING;
+      break;
+    case EMPTY_BIN:
+       if(gearPresent && !beamBroken) 
+        nextState = FULL_BIN;
+      else if(gearPresent && beamBroken) 
+        nextState = UNKNOWN_STATE;
+      else if(!gearPresent && !beamBroken) 
+        nextState = EMPTY_BIN;
+      else if(!gearPresent && beamBroken) 
+        nextState = UNKNOWN_STATE;
+      break;
+    case GEAR_EXITING:
+      if(gearPresent && !beamBroken) 
+        nextState = FULL_BIN;
+      else if(gearPresent && beamBroken) 
+        nextState = UNKNOWN_STATE;
+      else if(!gearPresent && !beamBroken) 
+        nextState = EMPTY_BIN;
+      else if(!gearPresent && beamBroken) 
+        nextState = GEAR_EXITING;
+      break; 
+    case UNKNOWN_STATE:
+      if(gearPresent && !beamBroken) 
+        nextState = FULL_BIN;
+      else
+        nextState = UNKNOWN_STATE;
+      break;
+    default:
+     nextState = EMPTY_BIN;
+  }
+    // need to protect the assignment to the global array
+    // since the assignment could be interrupted by an I2C request halfway through.
+    // This is true since the arduino is an 8 bit processor, and the
+    // target is 16 bits - it takes two cycles to make the assignment
+  noInterrupts();
+    currentState = nextState;
+  interrupts();
+}
+
+void printEnum(int i) {
+    Serial.print("Current State: ");
+    switch(i) {
+    case FULL_BIN:
+      Serial.println("FULL_BIN");    
+      break;   
+    case GEAR_LIFTING:
+      Serial.println("GEAR_LIFTING");       
+      break;   
+    case EMPTY_BIN:
+      Serial.println("EMPTY_BIN");
+      break;   
+    case GEAR_EXITING:
+      Serial.println("GEAR_EXITING");
+      break;   
+    case UNKNOWN_STATE:
+      Serial.println("UNKNOWN_STATE");
+      break;   
+    }
+  }
 // function that executes whenever data is requested by master
 // this function is registered as an event, see setup()
 // this function can also be called at other times (say via events coming through Serial)
@@ -148,6 +271,9 @@ void requestEvent() {
 //      break;
     case MODE_GetIR:
       handleGetIRRequest();
+      break;
+    case MODE_GetGearState:
+      handleGetGearStateRequest();
       break;
     case MODE_HELP:
       handleHelpRequest();
@@ -172,6 +298,9 @@ void receiveEvent(int howMany) { // handles i2c write event from master
     case 'I':
       g_commandMode = MODE_GetIR;
       break;
+    case 'G':
+      g_commandMode = MODE_GetGearState;
+      break;
     case '?':
       g_commandMode = MODE_HELP;
       break;
@@ -192,6 +321,7 @@ void handleHelpRequest() {
     Serial.println("    S:  Change LED to SLOW flash. Read 'SLOW'");
     Serial.println("    B:  Change LED flash rate directly - pass another long to say how fast (in milliseconds)");
     Serial.println("    I:  Display IR Value");
+    Serial.println("    G:  Display Current Gear State");
 // TODO - add menu items
     Serial.println("   \\0:  (or anything unhandled) Read unsingned int counter");
     Serial.println("    ?:  Show this help (otherwise act like \\0)");
@@ -207,6 +337,13 @@ void handleGetIRRequest() {
   }
 
   writeShorts(IR_distances, NUMSENSORS, serialMode);
+}
+
+void handleGetGearStateRequest() {
+  if (serialMode) {
+    Serial.println("we are getting gear states");
+  }
+  writeShorts(&currentState, 1, serialMode);
 }
 
 // TODO - write handlers - see StormNetCommon.h for examples
