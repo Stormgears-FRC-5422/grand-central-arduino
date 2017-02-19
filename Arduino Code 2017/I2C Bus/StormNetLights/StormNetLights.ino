@@ -173,6 +173,8 @@ void handleHelpRequest() {
   if (serialMode) {
     printBuiltInHelp();
     // TODO - add menu items
+    Serial.println("    L:  Light control [id, mode, arg1, arg2]");
+    
     g_commandMode = MODE_IDLE;  // This only makes sense in serialMode
   }
   else // move on - nothing to see here
@@ -181,27 +183,16 @@ void handleHelpRequest() {
 
 //================================
 void handleLightReceive() {
-  //put rest of values into mode array
+  byte buffer[4];  
   byte id;
-  byte mode;
-  byte arg1;
-  byte arg2;
 
-  readBytes( &id , 1);
-  readBytes( &mode , 1);
-  readBytes( &arg1, 1);
-  readBytes( &arg2, 1);
+  //[id, mode, arg1, arg2]
+  readBytes( buffer, 4);
 
-// for testing
-// id = 1;
-// mode = 1;
-// arg1 = random(0,3);
-// arg2 = 0;
-
- modes[id][0] = mode;
- modes[id][1] = arg1;
- modes[id][2] = arg2;
- 
-   
+  id = buffer[0]; 
+  //put rest of values into mode array [mode, arg1, arg2]
+  modes[id][0] = buffer[1];
+  modes[id][1] = buffer[2];
+  modes[id][2] = buffer[3];
 }
 // TODO - write handlers - see StormNetCommon.h for examples
