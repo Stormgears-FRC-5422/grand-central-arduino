@@ -105,10 +105,13 @@ void scanData(byte* array, uint8_t array_size, dataType dType = rawType) {
         *((double*)(array + i)) = (double)Serial.parseFloat();
         i+=sizeof(double);
         break;
-      case rawType:
       case byteType:
+        *((byte*)(array + i)) = (byte)Serial.parseInt();
+        i+=sizeof(byte);
+        break;
+      case rawType:
       default:
-        *((short*)(array + i)) = (short)Serial.read();
+        *((byte*)(array + i)) = (byte)Serial.read();
         i+=sizeof(char);
         break;
     }

@@ -16,18 +16,21 @@ int ledState = LOW;                 // ledState used to set the LED
 unsigned long currentMillis = 0;
 unsigned long previousBlink = 0;
 
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(30, 6, NEO_RGBW); //second number is pin#
+const int TOTAL_LIGHTS = 45;
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(TOTAL_LIGHTS, 6,  NEO_GRBW + NEO_KHZ800); //second number is pin#
 
 //colors
 uint32_t off   = strip.Color(0, 0, 0, 0);
 uint32_t white = strip.Color(0, 0, 0, 255);
-uint32_t green = strip.Color(255, 0, 0, 0);
-uint32_t red   = strip.Color(0, 255, 0, 0);
+uint32_t green = strip.Color(0, 255, 0, 0);
+uint32_t red   = strip.Color(255, 0, 0, 0);
+uint32_t blue  = strip.Color(0, 0, 255, 0);
 
 
 //light arrays
-int modes[2][3] = {{1, 1, 0}, {1, 1, 0}}; // {mode, param1, param2}
-int lightStrings[2][2] = {{0, 4}, {5, 29}}; // dividing up the light strip into segments
+int modes[2][3] = {{1, 1, 255}, {1, 2, 255}}; // {mode, param1, param2}
+// dividing up the light strip into segments
+int lightStrings[2][2] = {{0, 4}, {5, 44}}; // onboard, gear ring light, shooter ring light
 
 // For onboard light
 //Adafruit_NeoPixel strip = Adafruit_NeoPixel(1, 6, NEO_RGBW); //second number is pin# - probably not right
@@ -102,13 +105,13 @@ void lightLoop() {
        // ringMode(i, 0);
         break;
       case 1:
-        ringMode(i, modes[i][1]);
+        ringMode(i, modes[i][1], modes[i][2]);
         break;
     }
   }
 }
 
-void ringMode(int iD, int color) {
+void ringMode(int iD, int color, byte brightness) {
   for (int i = lightStrings[iD][0]; i <= lightStrings[iD][1]; i++) {
     switch (color) {
       case 0:
@@ -120,10 +123,15 @@ void ringMode(int iD, int color) {
       case 2:
         strip.setPixelColor(i, green);
         break;
+      case 3:
+        strip.setPixelColor(i, red);
+        break;
       default:
         strip.setPixelColor(i, off);
     }
   }
+
+  strip.setBrightness(brightness);
   strip.show();
 }
 
@@ -187,7 +195,7 @@ void handleLightReceive() {
   byte id;
 
   //[id, mode, arg1, arg2]
-  readBytes( buffer, 4);
+  readBytes( buffer, 4, byteType);
 
   id = buffer[0]; 
   //put rest of values into mode array [mode, arg1, arg2]
