@@ -28,7 +28,6 @@ const int ledPin =  13;             // the number of the LED pin
 int ledState = LOW;                 // ledState used to set the LED
 unsigned long currentMillis = 0;
 unsigned long previousBlink = 0;
-volatile long blinkInterval = 100;           // interval at which to blink (milliseconds)
 
 const unsigned long int i2cHeartbeatTimeout = 15000; // master must talk to slave within this number of milliseconds or LED will revert to fast pulse
 volatile unsigned long previousI2C = 0;   // will store last time LED was updated

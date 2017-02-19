@@ -16,6 +16,9 @@ int ledState = LOW;                 // ledState used to set the LED
 unsigned long currentMillis = 0;
 unsigned long previousBlink = 0;
 
+const unsigned long int i2cHeartbeatTimeout = 15000; // master must talk to slave within this number of milliseconds or LED will revert to fast pulse
+volatile unsigned long previousI2C = 0;   // will store last time LED was updated
+
 const int TOTAL_LIGHTS = 45;
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(TOTAL_LIGHTS, 6,  NEO_GRBW + NEO_KHZ800); //second number is pin#
 
@@ -37,9 +40,6 @@ int lightStrings[2][2] = {{0, 4}, {5, 44}}; // onboard, gear ring light, shooter
 //int modes[2][3] = {{1, 2, 0}, {0, 0, 0}};
 //int lightStrings[2][2] = {{0, 0}, {0, 0}};
 
-
-const unsigned long int i2cHeartbeatTimeout = 15000; // master must talk to slave within this number of milliseconds or LED will revert to fast pulse
-volatile unsigned long previousI2C = 0;   // will store last time LED was updated
 
 void setup() {
   g_i2cAddress = I2C_ADDRESS;
@@ -95,7 +95,6 @@ void loop() { //main user command loop
   }
 
   lightLoop();
-
 }
 
 void lightLoop() {
