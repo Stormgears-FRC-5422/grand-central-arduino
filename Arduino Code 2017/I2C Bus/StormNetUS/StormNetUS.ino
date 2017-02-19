@@ -13,7 +13,8 @@ const char MODE_US = 6;
 #define NUMSENSORS 5
 int usEN[NUMSENSORS] = {11,9,7,4,2};
 int usRX[NUMSENSORS] = {12,10,8,5,3};
-volatile byte ranges[NUMSENSORS] = { 0, 0, 0, 0, 0};
+// volatile?
+byte ranges[NUMSENSORS] = { 0, 0, 0, 0, 0};
 
 SoftwareSerial US[NUMSENSORS] = {SoftwareSerial(12, 13, true),
                                  SoftwareSerial(10, 13, true),
@@ -195,16 +196,9 @@ void receiveEvent(int howMany) { // handles i2c write event from master
 //================================
 void handleHelpRequest() {
   if (serialMode) {
-    Serial.println();
-    Serial.println("===== Stormgears I2C Device Help =====");
-    Serial.println("    P:  Ping - read I2C Address");
-    Serial.println("    F:  Change LED to FAST flash. Read 'FAST'");
-    Serial.println("    S:  Change LED to SLOW flash. Read 'SLOW'");
-    Serial.println("    B:  Change LED flash rate directly - pass another long to say how fast (in milliseconds)");
-    Serial.println("    U:  Print ultrasonic values");
+    printBuiltInHelp();
     // TODO - add menu items
-    Serial.println("   \\0:  (or anything unhandled) Read unsingned int counter");
-    Serial.println("    ?:  Show this help (otherwise act like \\0)");
+    Serial.println("    U:  Print ultrasonic values");
     g_commandMode = MODE_IDLE;  // This only makes sense in serialMode
   }
   else // move on - nothing to see here

@@ -31,6 +31,18 @@ enum dataType {
   doubleType
 };
 
+void printBuiltInHelp() {
+    Serial.println();
+    Serial.println("===== Stormgears I2C Device Help =====");
+    Serial.println("Pass arguments in [].  For example, B[100]");
+    Serial.println("    ?:  Show this help (otherwise act like \\0)");
+    Serial.println("   \\0:  (or anything unhandled) Read unsignned int counter");
+    Serial.println("    P:  Ping - read I2C Address");
+    Serial.println("    F:  Change LED to FAST flash. Read 'FAST'");
+    Serial.println("    S:  Change LED to SLOW flash. Read 'SLOW'");
+    Serial.println("    B:  Change LED flash rate directly - pass another long to say how fast (in milliseconds)");
+}
+
 void printData(byte* array, uint8_t array_size, dataType dType = rawType) {
   if (dType == textType) {
     Serial.println((char*)array);
@@ -69,6 +81,43 @@ void printData(byte* array, uint8_t array_size, dataType dType = rawType) {
   }
 }
 
+// Read data values from the serial port. This respects the pattern followed by printData() above -
+// That is, it will read
+// [ value, value, value ]
+// into a buffer of three values. It tries to be forgiving of format difference.
+// We'll use 0 for missing or otherwise invalid cases.
+void scanData(byte* array, uint8_t array_size, dataType dType = rawType) {
+  for (int i = 0; i < array_size;) {
+    switch (dType) {
+      case shortType:
+        *((short*)(array + i)) = (short)Serial.parseInt();
+        i+=sizeof(short);
+        break;
+      case longType:
+        *((long*)(array + i)) = (long)Serial.parseInt();
+        i+=sizeof(long);
+        break;
+      case floatType:
+        *((float*)(array + i)) = (float)Serial.parseFloat();
+        i+=sizeof(float);
+        break;
+      case doubleType:
+        *((double*)(array + i)) = (double)Serial.parseFloat();
+        i+=sizeof(double);
+        break;
+      case rawType:
+      case byteType:
+      default:
+        *((short*)(array + i)) = (short)Serial.read();
+        i+=sizeof(char);
+        break;
+    }
+  }
+  // for good measure:
+  Serial.print("read ");
+  printData(array, array_size, dType);
+  Serial.readString(); // take care of any straggling character. ']', etc.
+}
 // Helper to write to either the I2C Wire or Serial
 void writeBytes(void* buffer, byte count, dataType dType = rawType, boolean serialMode = false) {
   if (serialMode) {
@@ -97,14 +146,19 @@ byte readByte() {
 }
 
 // Fill a buffer with "count" bytes read from the bus
-void readBytes(byte* buffer, int count) {
-  for (int i=0; i<count; i++)
-    buffer[i] = readByte();
+void readBytes(byte* buffer, int count, dataType dType = rawType) {
+  if (serialMode) {
+    scanData(buffer, count, dType);
+  }
+  else {
+    for (int i=0; i<count; i++)
+      buffer[i] = readByte();
+  }
 }
 
 // Fill a buffer with "count" shorts read from the bus
 void readShorts(short* buffer, int count) {
-  readBytes((byte*) buffer, count * sizeof(short));
+  readBytes((byte*) buffer, count * sizeof(short), shortType);
 }
 
 // Fill a buffer with "count" shorts read from the bus
@@ -114,7 +168,7 @@ void writeShorts(short* buffer, int count, boolean serialMode = false) {
 
 // Fill a buffer with "count" longs read from the bus
 void readLongs(long* buffer, int count) {
-  readBytes((byte*) buffer, count * sizeof(long));
+  readBytes((byte*) buffer, count * sizeof(long), longType);
 }
 
 // Fill a buffer with "count" longs read from the bus
@@ -124,12 +178,22 @@ void writeLongs(long* buffer, int count, boolean serialMode = false) {
 
 // Fill a buffer with "count" floats read from the bus
 void readFloats(float* buffer, int count) {
-  readBytes((byte*) buffer, count * sizeof(float));
+  readBytes((byte*) buffer, count * sizeof(float), floatType);
 }
 
 // Fill a buffer with "count" floats read from the bus
 void writeFloats(float* buffer, int count, boolean serialMode = false) {
   writeBytes((byte*) buffer, count * sizeof(float), floatType, serialMode);
+}
+
+// Fill a buffer with "count" doubles read from the bus
+void readDouble(double* buffer, int count) {
+  readBytes((byte*) buffer, count * sizeof(double), doubleType);
+}
+
+// Fill a buffer with "count" doubles read from the bus
+void writeDoubles(double* buffer, int count, boolean serialMode = false) {
+  writeBytes((byte*) buffer, count * sizeof(double), doubleType, serialMode);
 }
 
 // Handlers

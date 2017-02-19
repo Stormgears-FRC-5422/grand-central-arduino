@@ -6,7 +6,8 @@ const char I2C_ADDRESS = 11;    // each device needs its own 7 bit address
 // Command modes
 // const char MODE_X = 6;        // your mode here
 const char MODE_GetIR = 6;        // your mode here
-const chat MODE_GetGearState = 7;
+const char MODE_GetGearState = 7;
+const char MODE_Diagnostic = 8;   // report the beam and proximity status
 // TODO: add more modes
 
 //IR constants
@@ -20,7 +21,8 @@ const chat MODE_GetGearState = 7;
 #define GP2Y0A51SK0F 1 // 2-15 centimeter range
 #define GP2Y0A21YK0F 2 // 10-80 centimeter range
 #define GP2Y0A60SZLF 3 // 20-150 centimeter range
-volatile short int IR_distances[] = { 0, 0, 0, 0, 0, 0}; // in centimeters
+// volatile?
+short int IR_distances[] = { 0, 0, 0, 0, 0, 0}; // in centimeters
 short int IR_config[NUMSENSORS][2] = { //define what Sharp IR sensors are plugged in where
    {GP2Y0A51SK0F, IR1_ANL},
    {GP2Y0A51SK0F, IR2_ANL},
@@ -49,8 +51,8 @@ enum gear_states {
 };
 
 #define NUM_LINE_PINS 5 // Number of pins for the line sensor 
-int lineSensorPins[NUM_LINE_PINS] = {12,11,10,9,8};
-int lineSensorVal[NUM_LINE_PINS] = {0,0,0,0,0};
+byte lineSensorPins[NUM_LINE_PINS] = {12,11,10,9,8};
+byte lineSensorVal[NUM_LINE_PINS] = {0,0,0,0,0};
 int analogVal = 0;
 int analogPin = 0;
 
@@ -275,6 +277,9 @@ void requestEvent() {
     case MODE_GetGearState:
       handleGetGearStateRequest();
       break;
+    case MODE_Diagnostic:
+      handleGetDiagnosticRequest();
+      break;
     case MODE_HELP:
       handleHelpRequest();
       break;
@@ -301,6 +306,9 @@ void receiveEvent(int howMany) { // handles i2c write event from master
     case 'G':
       g_commandMode = MODE_GetGearState;
       break;
+    case 'D':
+      g_commandMode = MODE_Diagnostic;
+      break;
     case '?':
       g_commandMode = MODE_HELP;
       break;
@@ -314,17 +322,11 @@ void receiveEvent(int howMany) { // handles i2c write event from master
 //================================
 void handleHelpRequest() {
   if (serialMode) {
-    Serial.println();
-    Serial.println("===== Stormgears I2C Device Help =====");
-    Serial.println("    P:  Ping - read I2C Address");
-    Serial.println("    F:  Change LED to FAST flash. Read 'FAST'");
-    Serial.println("    S:  Change LED to SLOW flash. Read 'SLOW'");
-    Serial.println("    B:  Change LED flash rate directly - pass another long to say how fast (in milliseconds)");
+    printBuiltInHelp();
+      // TODO - add menu items
     Serial.println("    I:  Display IR Value");
     Serial.println("    G:  Display Current Gear State");
-// TODO - add menu items
-    Serial.println("   \\0:  (or anything unhandled) Read unsingned int counter");
-    Serial.println("    ?:  Show this help (otherwise act like \\0)");
+    Serial.println("    D:  Display beam and proximity details");
     g_commandMode = MODE_IDLE;  // This only makes sense in serialMode
   }
   else // move on - nothing to see here
@@ -333,7 +335,7 @@ void handleHelpRequest() {
 
 void handleGetIRRequest() {
   if (serialMode) {
-    Serial.println("we are in IR");
+    Serial.println("In IR");
   }
 
   writeShorts(IR_distances, NUMSENSORS, serialMode);
@@ -341,9 +343,24 @@ void handleGetIRRequest() {
 
 void handleGetGearStateRequest() {
   if (serialMode) {
-    Serial.println("we are getting gear states");
+    Serial.println("Getting gear states");
   }
   writeShorts(&currentState, 1, serialMode);
+}
+
+void handleGetDiagnosticRequest() {
+  if (serialMode) {
+    Serial.println("Getting diagnostics");
+    // write the beam status
+    Serial.print("[ ");
+    Serial.print(beamBroken ? "beam broken" : "beam NOT broken");
+    Serial.println(" ]");    
+  } else {
+    writeBytes(&beamBroken, 1, byteType, serialMode);
+  }
+  
+  // write the proximity status
+  writeBytes(lineSensorVal, NUM_LINE_PINS, byteType, serialMode);  
 }
 
 // TODO - write handlers - see StormNetCommon.h for examples
