@@ -1,3 +1,5 @@
+#include <Adafruit_NeoPixel.h>
+
 #include "StormNetCommon.h"
 #include <SoftwareSerial.h>
 
@@ -9,18 +11,21 @@ const char I2C_ADDRESS = 8;    // each device needs its own 7 bit address
 // const char MODE_X = 6;        // your mode here
 // TODO: add more modes
 const char MODE_US = 6;
+const char MODE_GEAR_RING_OFF = 7;
+const char MODE_GEAR_RING_ON = 8;
+const char MODE_SHOOTER_RING_OFF = 9;
+const char MODE_SHOOTER_RING_ON = 10;
 
-#define NUMSENSORS 5
-int usEN[NUMSENSORS] = {11,9,7,4,2};
-int usRX[NUMSENSORS] = {12,10,8,5,3};
+#define NUMSENSORS 4
+int usEN[NUMSENSORS] = {11,9,7,4};
+int usRX[NUMSENSORS] = {12,10,8,5};
 // volatile?
-byte ranges[NUMSENSORS] = { 0, 0, 0, 0, 0};
+byte ranges[NUMSENSORS] = { 0, 0, 0, 0};
 
 SoftwareSerial US[NUMSENSORS] = {SoftwareSerial(12, 13, true),
                                  SoftwareSerial(10, 13, true),
                                  SoftwareSerial(8, 13, true),
                                  SoftwareSerial(5, 13, true),
-                                 SoftwareSerial(3, 13, true),
                                  };
 
 // blink control
@@ -31,6 +36,23 @@ unsigned long previousBlink = 0;
 
 const unsigned long int i2cHeartbeatTimeout = 15000; // master must talk to slave within this number of milliseconds or LED will revert to fast pulse
 volatile unsigned long previousI2C = 0;   // will store last time LED was updated
+
+
+// neopixel support
+#define NUMLIGHTS 80
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMLIGHTS, 2, NEO_RGBW); //first number is total count, ,second number is pin# 
+
+//colors
+uint32_t off = strip.Color (0, 0, 0, 0);
+uint32_t white = strip.Color(0, 0, 0, 255);
+uint32_t green = strip.Color(255, 0, 0, 0);
+uint32_t red = strip.Color(0, 255, 0, 0);
+uint32_t teal = strip.Color(120, 1, 67, 2);
+uint32_t blue = strip.Color(0, 0, 255, 0);
+
+int lightStrings[2][2] = {{0, 39}, {40, NUMLIGHTS}};
+int Gear_Ring_State=0;
+int Shooter_Ring_State=0;
 
 void setup() {
   g_i2cAddress = I2C_ADDRESS;
@@ -52,6 +74,8 @@ void setup() {
      digitalWrite(usEN[i], LOW);
      US[i].begin(9600);
   }
+   strip.begin();
+   handleRingLightRequest();
 }
 
 void loop() { //main user command loop
@@ -159,6 +183,22 @@ void requestEvent() {
     case MODE_US:
       handleUSRequest();
       break;
+    case MODE_GEAR_RING_ON:
+      Gear_Ring_State=1;
+      handleRingLightRequest();
+      break;
+    case MODE_GEAR_RING_OFF:
+      Gear_Ring_State=0;
+      handleRingLightRequest();
+      break;
+    case MODE_SHOOTER_RING_ON:
+      Shooter_Ring_State=1;
+      handleRingLightRequest();
+      break;
+    case MODE_SHOOTER_RING_OFF:
+      Shooter_Ring_State=0;
+      handleRingLightRequest();
+      break;
     case MODE_HELP:
       handleHelpRequest();
       break;
@@ -182,6 +222,18 @@ void receiveEvent(int howMany) { // handles i2c write event from master
     case 'U':
       g_commandMode = MODE_US;
       break;
+    case '1':
+      g_commandMode = MODE_GEAR_RING_ON;
+      break;
+    case '2':
+      g_commandMode = MODE_GEAR_RING_OFF;
+      break;
+    case '3':
+      g_commandMode = MODE_SHOOTER_RING_ON;
+      break;
+    case '4':
+      g_commandMode = MODE_SHOOTER_RING_OFF;
+      break;
     case '?':
       g_commandMode = MODE_HELP;
       break;
@@ -198,10 +250,23 @@ void handleHelpRequest() {
     printBuiltInHelp();
     // TODO - add menu items
     Serial.println("    U:  Print ultrasonic values");
+    Serial.println("    1:  Gear ring light ON");
+    Serial.println("    2:  Gear ring light OFF");
+    Serial.println("    3:  Shooter ring light ON");
+    Serial.println("    4:  Shooter ring light OFF");
     g_commandMode = MODE_IDLE;  // This only makes sense in serialMode
   }
   else // move on - nothing to see here
     handleDefaultRequest();
+}
+
+void handleRingLightRequest(){
+   if (Gear_Ring_State==0) for (int i=0; i<=39; i++) strip.setPixelColor(i,off);
+   if (Gear_Ring_State==1) for (int i=0; i<=39; i++) strip.setPixelColor(i,green);
+   if (Shooter_Ring_State==0) for (int i=40; i<=NUMLIGHTS; i++) strip.setPixelColor(i,off);
+   if (Shooter_Ring_State==1) for (int i=40; i<=NUMLIGHTS; i++) strip.setPixelColor(i,green);
+   
+   strip.show();
 }
 
 void handleUSRequest() {
