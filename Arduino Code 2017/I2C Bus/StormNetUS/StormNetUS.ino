@@ -267,6 +267,7 @@ void handleRingLightRequest(){
    if (Shooter_Ring_State==1) for (int i=40; i<=NUMLIGHTS; i++) strip.setPixelColor(i,green);
    
    strip.show();
+   handleDefaultRequest();
 }
 
 void handleUSRequest() {
