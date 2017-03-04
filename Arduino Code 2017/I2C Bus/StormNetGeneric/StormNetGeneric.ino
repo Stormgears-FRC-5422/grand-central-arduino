@@ -36,6 +36,15 @@ void setup() {
 void loop() { //main user command loop
   // Flip to serial mode if there is anything to be read. Otherwise back to I2C mode
   serialMode = Serial.available();
+  if (serialMode) {
+    Wire.onRequest(NULL);     // register event
+    Wire.onReceive(NULL);     // register event  
+  }
+  else {
+    Wire.onRequest(requestEvent);     // register event
+    Wire.onReceive(receiveEvent);     // register event
+  }
+
 
   //========== flash heartbeat (etc) LED =============
   currentMillis = millis();
