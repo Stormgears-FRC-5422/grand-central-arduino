@@ -51,8 +51,8 @@ uint32_t teal = strip.Color(120, 1, 67, 2);
 uint32_t blue = strip.Color(0, 0, 255, 0);
 
 int lightStrings[2][2] = {{0, 39}, {40, NUMLIGHTS}};
-int Gear_Ring_State=0;
-int Shooter_Ring_State=0;
+int Gear_Ring_State=1;
+int Shooter_Ring_State=1;
 
 void setup() {
   g_i2cAddress = I2C_ADDRESS;
@@ -283,5 +283,7 @@ void handleUSRequest() {
     Serial.println("we are in US");
 
   writeBytes(ranges, NUMSENSORS, byteType, serialMode);
+//  for (int i = 0; i< NUMSENSORS; i++)
+//    Serial.println(ranges[i]);
 }
 // TODO - write handlers

@@ -1,5 +1,5 @@
 #include <Wire.h>
-const int I2C_SLAVE_ADDRESS=5;
+const int I2C_SLAVE_ADDRESS=8;
 
 int CmdByte = 0;         // incoming serial byte
 byte lastCommand = -1;
@@ -15,10 +15,10 @@ void setup() {
   Serial.println("Hit '?' for Help");
   Serial.print("==> ");
 }
-
+c
 void loop() { //main user command loop
-  slave_commands('P');
-  delay(10);
+  slave_commands('U ');
+  delay(1000);
 //   if (Serial.available() > 0) {
 //     CmdByte = Serial.read(); // get user command
 //     Serial.println(char(CmdByte));
@@ -103,7 +103,7 @@ void slave_commands(char c){
     case 'F':
       readIt(4, false);
       break;
-    case 'B':
+    case 'U':
       readIt(4, true);
       break;
     case '\0':

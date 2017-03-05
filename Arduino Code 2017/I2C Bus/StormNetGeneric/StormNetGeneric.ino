@@ -37,8 +37,8 @@ void loop() { //main user command loop
   // Flip to serial mode if there is anything to be read. Otherwise back to I2C mode
   serialMode = Serial.available();
   if (serialMode) {
-    Wire.onRequest(NULL);     // register event
-    Wire.onReceive(NULL);     // register event  
+    Wire.onRequest(NULL);     // It is problematic to get wire interrupts during serial mode
+    Wire.onReceive(NULL);
   }
   else {
     Wire.onRequest(requestEvent);     // register event
