@@ -17,8 +17,8 @@ const char MODE_SHOOTER_RING_OFF = 9;
 const char MODE_SHOOTER_RING_ON = 10;
 
 #define NUMSENSORS 4
-int usEN[NUMSENSORS] = {11,9,7,4};
-int usRX[NUMSENSORS] = {12,10,8,5};
+int usEN[NUMSENSORS] = {11, 9, 7, 4};
+int usRX[NUMSENSORS] = {12, 10, 8, 5};
 // volatile?
 byte ranges[NUMSENSORS] = { 0, 0, 0, 0};
 
@@ -26,7 +26,7 @@ SoftwareSerial US[NUMSENSORS] = {SoftwareSerial(12, 13, true),
                                  SoftwareSerial(10, 13, true),
                                  SoftwareSerial(8, 13, true),
                                  SoftwareSerial(5, 13, true),
-                                 };
+                                };
 
 // blink control
 const int ledPin =  13;             // the number of the LED pin
@@ -40,7 +40,8 @@ volatile unsigned long previousI2C = 0;   // will store last time LED was update
 
 // neopixel support
 #define NUMLIGHTS 14
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMLIGHTS, 2, NEO_RGBW); //first number is total count, ,second number is pin# 
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMLIGHTS, 2, NEO_RGBW); //first number is total count, ,second number is pin#
+Adafruit_NeoPixel strip0 = Adafruit_NeoPixel(1, 6, NEO_RGBW); //first number is total count, ,second number is pin#
 
 //colors
 uint32_t off = strip.Color (0, 0, 0, 0);
@@ -51,8 +52,8 @@ uint32_t teal = strip.Color(120, 1, 67, 2);
 uint32_t blue = strip.Color(0, 0, 255, 0);
 
 int lightStrings[2][2] = {{0, 39}, {40, NUMLIGHTS}};
-int Gear_Ring_State=0;
-int Shooter_Ring_State=0;
+int Gear_Ring_State = 0;
+int Shooter_Ring_State = 0;
 
 void setup() {
   g_i2cAddress = I2C_ADDRESS;
@@ -68,14 +69,15 @@ void setup() {
   Serial.println("Stormgears I2C Slave Device Diagnostic System");
   Serial.println("Hit '?' for Help");
 
-  for(int i = 0; i < NUMSENSORS; i++) {
-     pinMode(usEN[i], OUTPUT);
-     pinMode(usRX[i], INPUT);
-     digitalWrite(usEN[i], LOW);
-     US[i].begin(9600);
+  for (int i = 0; i < NUMSENSORS; i++) {
+    pinMode(usEN[i], OUTPUT);
+    pinMode(usRX[i], INPUT);
+    digitalWrite(usEN[i], LOW);
+    US[i].begin(9600);
   }
-   strip.begin();
-   handleRingLightRequest();
+  strip.begin();
+  strip0.begin();
+  handleRingLightRequest();
 }
 
 void loop() { //main user command loop
@@ -87,13 +89,13 @@ void loop() { //main user command loop
 
   // the interrupts could change the value of g_blinkInterval which can mess with this logic
   noInterrupts();
-    // Blink superfast if we haven't heard from the master in a while
-    if ( (currentMillis - previousI2C) > i2cHeartbeatTimeout)  // stale
-      g_blinkInterval = 100;
-    else
-      g_blinkInterval = g_blinkInterval==100 ? 1000 : g_blinkInterval;
+  // Blink superfast if we haven't heard from the master in a while
+  if ( (currentMillis - previousI2C) > i2cHeartbeatTimeout)  // stale
+    g_blinkInterval = 100;
+  else
+    g_blinkInterval = g_blinkInterval == 100 ? 1000 : g_blinkInterval;
 
-    boolean flipNow = ( (currentMillis - previousBlink) >= g_blinkInterval);
+  boolean flipNow = ( (currentMillis - previousBlink) >= g_blinkInterval);
   interrupts();
 
   if (flipNow) {
@@ -116,38 +118,40 @@ void loop() { //main user command loop
   demoNeopixel();
 }
 
-void demoNeopixel(){
-int edge;
-int i;
-if (ranges[0]<9) edge=0;
-if (ranges[0]>=9 && ranges[0]<11) edge=1;
-if (ranges[0]>=11 && ranges[0]<13) edge=2;
-if (ranges[0]>=13 && ranges[0]<15) edge=3;
-if (ranges[0]>=15 && ranges[0]<17) edge=4;
-if (ranges[0]>=17 && ranges[0]<19) edge=5;
-if (ranges[0]>=19 && ranges[0]<21) edge=6;
-if (ranges[0]>=21 && ranges[0]<23) edge=7;
-if (ranges[0]>=23 && ranges[0]<25) edge=8;
-if (ranges[0]>=25 && ranges[0]<27) edge=9;
-if (ranges[0]>=27 && ranges[0]<29) edge=10;
-if (ranges[0]>=29 && ranges[0]<31) edge=11;
-if (ranges[0]>=31 && ranges[0]<33) edge=12;
-if (ranges[0]>=33 && ranges[0]<35) edge=13;
-if (ranges[0]>=35 && ranges[0]<37) edge=14;
+void demoNeopixel() {
+  int edge;
+  int i;
+  if (ranges[0] < 9) edge = 0;
+  if (ranges[0] >= 9 && ranges[0] < 11) edge = 1;
+  if (ranges[0] >= 11 && ranges[0] < 13) edge = 2;
+  if (ranges[0] >= 13 && ranges[0] < 15) edge = 3;
+  if (ranges[0] >= 15 && ranges[0] < 17) edge = 4;
+  if (ranges[0] >= 17 && ranges[0] < 19) edge = 5;
+  if (ranges[0] >= 19 && ranges[0] < 21) edge = 6;
+  if (ranges[0] >= 21 && ranges[0] < 23) edge = 7;
+  if (ranges[0] >= 23 && ranges[0] < 25) edge = 8;
+  if (ranges[0] >= 25 && ranges[0] < 27) edge = 9;
+  if (ranges[0] >= 27 && ranges[0] < 29) edge = 10;
+  if (ranges[0] >= 29 && ranges[0] < 31) edge = 11;
+  if (ranges[0] >= 31 && ranges[0] < 33) edge = 12;
+  if (ranges[0] >= 33 && ranges[0] < 35) edge = 13;
+  if (ranges[0] >= 35 && ranges[0] < 37) edge = 14;
 
-for (int i=0; i<=edge; i++) strip.setPixelColor(i,teal);
-for (int i=edge; i<=NUMLIGHTS; i++) strip.setPixelColor(i,off);
-
-   
-   strip.show();
+  for (int i = 0; i <= edge; i++) strip.setPixelColor(i, teal);
+  for (int i = edge; i <= NUMLIGHTS; i++) strip.setPixelColor(i, off);
 
 
-  
+  strip.show();
+
+  strip0.setPixelColor(0, teal);
+  strip0.show();
+
+
 }
 
 
 void usLoop() {
-  for(int i = 0; i < NUMSENSORS; i++) {
+  for (int i = 0; i < NUMSENSORS; i++) {
     ranges[i] = stormGetRange(US[i], usEN[i]);
   }
 }
@@ -163,14 +167,14 @@ int stormGetRange(SoftwareSerial US, int usEN) {
   //while (!US1.available() || US1.read() != 'R');
   startTime = millis();
   do {
-  while ((!US.available() && (currentTime = (millis() - startTime)) < 49)); //wait for character or time out
-  if (currentTime < 49) {
-    buffer[0] = US.read();
-  } else {
-    digitalWrite(usEN, LOW);
-    return 0;
-  }
-  }  while (buffer[0]!='R');  //wait until you get the first character of the next reading
+    while ((!US.available() && (currentTime = (millis() - startTime)) < 49)); //wait for character or time out
+    if (currentTime < 49) {
+      buffer[0] = US.read();
+    } else {
+      digitalWrite(usEN, LOW);
+      return 0;
+    }
+  }  while (buffer[0] != 'R'); //wait until you get the first character of the next reading
 
   startTime = millis();
   while (!US.available() && (currentTime = (millis() - startTime)) < 49); //wait for character or time out
@@ -206,28 +210,28 @@ int stormGetRange(SoftwareSerial US, int usEN) {
 // this function can also be called at other times (say via events coming through Serial)
 void requestEvent() {
   previousI2C = currentMillis;      // reset the comm timeout clock
-  switch(g_commandMode) {
-// TODO - new modes
-//    case MODE_X:
-//      handleXRequest();
-//      break;
+  switch (g_commandMode) {
+    // TODO - new modes
+    //    case MODE_X:
+    //      handleXRequest();
+    //      break;
     case MODE_US:
       handleUSRequest();
       break;
     case MODE_GEAR_RING_ON:
-      Gear_Ring_State=1;
+      Gear_Ring_State = 1;
       handleRingLightRequest();
       break;
     case MODE_GEAR_RING_OFF:
-      Gear_Ring_State=0;
+      Gear_Ring_State = 0;
       handleRingLightRequest();
       break;
     case MODE_SHOOTER_RING_ON:
-      Shooter_Ring_State=1;
+      Shooter_Ring_State = 1;
       handleRingLightRequest();
       break;
     case MODE_SHOOTER_RING_OFF:
-      Shooter_Ring_State=0;
+      Shooter_Ring_State = 0;
       handleRingLightRequest();
       break;
     case MODE_HELP:
@@ -246,10 +250,10 @@ void receiveEvent(int howMany) { // handles i2c write event from master
 
   if (howMany > 0) c = readByte();
   switch (c) {
-// TODO - new modes
-//    case 'X':
-//      g_commandMode = MODE_X;
-//      break;
+    // TODO - new modes
+    //    case 'X':
+    //      g_commandMode = MODE_X;
+    //      break;
     case 'U':
       g_commandMode = MODE_US;
       break;
@@ -272,7 +276,7 @@ void receiveEvent(int howMany) { // handles i2c write event from master
       receiveBuiltIn(c);
   }
 
-  while (readAvailable()) c=readByte(); // in case there is other stuff sent that needs to be collected - don't expect this
+  while (readAvailable()) c = readByte(); // in case there is other stuff sent that needs to be collected - don't expect this
 }
 
 //================================
@@ -291,13 +295,13 @@ void handleHelpRequest() {
     handleDefaultRequest();
 }
 
-void handleRingLightRequest(){
-   if (Gear_Ring_State==0) for (int i=0; i<=39; i++) strip.setPixelColor(i,off);
-   if (Gear_Ring_State==1) for (int i=0; i<=39; i++) strip.setPixelColor(i,green);
-   if (Shooter_Ring_State==0) for (int i=40; i<=NUMLIGHTS; i++) strip.setPixelColor(i,off);
-   if (Shooter_Ring_State==1) for (int i=40; i<=NUMLIGHTS; i++) strip.setPixelColor(i,green);
-   
-   strip.show();
+void handleRingLightRequest() {
+  if (Gear_Ring_State == 0) for (int i = 0; i <= 39; i++) strip.setPixelColor(i, off);
+  if (Gear_Ring_State == 1) for (int i = 0; i <= 39; i++) strip.setPixelColor(i, green);
+  if (Shooter_Ring_State == 0) for (int i = 40; i <= NUMLIGHTS; i++) strip.setPixelColor(i, off);
+  if (Shooter_Ring_State == 1) for (int i = 40; i <= NUMLIGHTS; i++) strip.setPixelColor(i, green);
+
+  strip.show();
 }
 
 void handleUSRequest() {
