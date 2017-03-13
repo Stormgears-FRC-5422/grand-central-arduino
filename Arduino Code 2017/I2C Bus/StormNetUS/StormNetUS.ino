@@ -51,8 +51,11 @@ uint32_t teal = strip.Color(120, 1, 67, 2);
 uint32_t blue = strip.Color(0, 0, 255, 0);
 
 int lightStrings[2][2] = {{0, 39}, {40, NUMLIGHTS}};
-int Gear_Ring_State=1;
-int Shooter_Ring_State=1;
+
+char next_Gear_Ring_State=1;
+char next_Shooter_Ring_State=1;
+char Gear_Ring_State=0;
+char Shooter_Ring_State=0;
 
 void setup() {
   g_i2cAddress = I2C_ADDRESS;
@@ -75,7 +78,7 @@ void setup() {
      US[i].begin(9600);
   }
    strip.begin();
-   handleRingLightRequest();
+   setRingLights();
 }
 
 void loop() { //main user command loop
@@ -121,6 +124,10 @@ void loop() { //main user command loop
   }
 
   usLoop();
+  // Only bother setting the lights if the state has changed.
+  if ( (next_Gear_Ring_State != Gear_Ring_State) || (next_Shooter_Ring_State != Shooter_Ring_State) ) {
+    setRingLights();
+  }
 }
 
 void usLoop() {
@@ -178,6 +185,17 @@ int stormGetRange(SoftwareSerial US, int usEN) {
   return atoi(&buffer[1]);
 }
 
+void setRingLights() {
+   if (Gear_Ring_State==0) for (int i=0; i<=39; i++) strip.setPixelColor(i,off);
+   if (Gear_Ring_State==1) for (int i=0; i<=39; i++) strip.setPixelColor(i,green);
+   if (Shooter_Ring_State==0) for (int i=40; i<=NUMLIGHTS; i++) strip.setPixelColor(i,off);
+   if (Shooter_Ring_State==1) for (int i=40; i<=NUMLIGHTS; i++) strip.setPixelColor(i,green);
+   
+   strip.show();
+   next_Gear_Ring_State = Gear_Ring_State;
+   next_Shooter_Ring_State = Shooter_Ring_State;
+}
+
 // function that executes whenever data is requested by master
 // this function is registered as an event, see setup()
 // this function can also be called at other times (say via events coming through Serial)
@@ -192,19 +210,9 @@ void requestEvent() {
       handleUSRequest();
       break;
     case MODE_GEAR_RING_ON:
-      Gear_Ring_State=1;
-      handleRingLightRequest();
-      break;
     case MODE_GEAR_RING_OFF:
-      Gear_Ring_State=0;
-      handleRingLightRequest();
-      break;
     case MODE_SHOOTER_RING_ON:
-      Shooter_Ring_State=1;
-      handleRingLightRequest();
-      break;
     case MODE_SHOOTER_RING_OFF:
-      Shooter_Ring_State=0;
       handleRingLightRequest();
       break;
     case MODE_HELP:
@@ -232,15 +240,19 @@ void receiveEvent(int howMany) { // handles i2c write event from master
       break;
     case '1':
       g_commandMode = MODE_GEAR_RING_ON;
+      next_Gear_Ring_State = 1;
       break;
     case '2':
       g_commandMode = MODE_GEAR_RING_OFF;
+      next_Gear_Ring_State = 0;
       break;
     case '3':
       g_commandMode = MODE_SHOOTER_RING_ON;
+      next_Shooter_Ring_State = 1;
       break;
     case '4':
       g_commandMode = MODE_SHOOTER_RING_OFF;
+      next_Shooter_Ring_State = 0;
       break;
     case '?':
       g_commandMode = MODE_HELP;
@@ -268,14 +280,9 @@ void handleHelpRequest() {
     handleDefaultRequest();
 }
 
-void handleRingLightRequest(){
-   if (Gear_Ring_State==0) for (int i=0; i<=39; i++) strip.setPixelColor(i,off);
-   if (Gear_Ring_State==1) for (int i=0; i<=39; i++) strip.setPixelColor(i,green);
-   if (Shooter_Ring_State==0) for (int i=40; i<=NUMLIGHTS; i++) strip.setPixelColor(i,off);
-   if (Shooter_Ring_State==1) for (int i=40; i<=NUMLIGHTS; i++) strip.setPixelColor(i,green);
-   
-   strip.show();
-   handleDefaultRequest();
+void handleRingLightRequest() {
+  // Nothing much to say - just return the counter
+  handleDefaultRequest();
 }
 
 void handleUSRequest() {
@@ -283,7 +290,5 @@ void handleUSRequest() {
     Serial.println("we are in US");
 
   writeBytes(ranges, NUMSENSORS, byteType, serialMode);
-//  for (int i = 0; i< NUMSENSORS; i++)
-//    Serial.println(ranges[i]);
 }
 // TODO - write handlers

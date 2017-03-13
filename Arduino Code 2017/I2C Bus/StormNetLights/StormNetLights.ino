@@ -4,7 +4,7 @@
 
 
 // TODO choose a unique address
-const char I2C_ADDRESS = 5;    // each device needs its own 7 bit address
+const char I2C_ADDRESS = 13;    // each device needs its own 7 bit address (ABOVE 7)
 
 // Command modes
 const char MODE_LIGHT = 6;        // your mode here

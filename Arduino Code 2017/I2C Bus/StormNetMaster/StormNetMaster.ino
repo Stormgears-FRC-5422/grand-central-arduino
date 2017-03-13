@@ -15,36 +15,36 @@ void setup() {
   Serial.println("Hit '?' for Help");
   Serial.print("==> ");
 }
-c
+
 void loop() { //main user command loop
-  slave_commands('U ');
-  delay(1000);
-//   if (Serial.available() > 0) {
-//     CmdByte = Serial.read(); // get user command
-//     Serial.println(char(CmdByte));
-//     switch(CmdByte){ //act on command
-//       case 's': //motor slave command menu
-//         display_slave_help();
-//         CmdByte=0;
-//         while(CmdByte!='e') { //stay in submenu until exit command ('e') is given
-//           if (Serial.available() > 0) {             //process letter comman
-//             CmdByte = Serial.read();                //get user command
-//             if(CmdByte=='e') display_master_help(); //go back to main menu and display help
-//             else slave_commands(CmdByte);           //execute the command
-//           }
-//         }
-//         break;
-//       case '?':
-//         display_master_help();
-//         break; //help
-//       default:
-//         Serial.println("Not a recognized command.");
-//         break;
-//     }
-//
-//     Serial.println();
-//     Serial.print("==> ");
-//  }
+//  slave_commands('U');
+//  delay(1000);
+   if (Serial.available() > 0) {
+     CmdByte = Serial.read(); // get user command
+     Serial.println(char(CmdByte));
+     switch(CmdByte){ //act on command
+       case 's': //motor slave command menu
+         display_slave_help();
+         CmdByte=0;
+         while(CmdByte!='e') { //stay in submenu until exit command ('e') is given
+           if (Serial.available() > 0) {             //process letter comman
+             CmdByte = Serial.read();                //get user command
+             if(CmdByte=='e') display_master_help(); //go back to main menu and display help
+             else slave_commands(CmdByte);           //execute the command
+           }
+         }
+         break;
+       case '?':
+         display_master_help();
+         break; //help
+       default:
+         Serial.println("Not a recognized command.");
+         break;
+     }
+
+     Serial.println();
+     Serial.print("==> ");
+  }
 }
 
 //================================

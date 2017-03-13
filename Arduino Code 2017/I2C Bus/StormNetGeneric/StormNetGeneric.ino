@@ -1,7 +1,7 @@
 #include "StormNetCommon.h"
 
 // TODO choose a unique address
-const char I2C_ADDRESS = 5;    // each device needs its own 7 bit address
+const char I2C_ADDRESS = 11;    // each device needs its own 7 bit address
 
 // Command modes
 // const char MODE_X = 6;        // your mode here
