@@ -40,7 +40,7 @@ volatile unsigned long previousI2C = 0;   // will store last time LED was update
 
 // neopixel support
 #define NUMLIGHTS 80
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMLIGHTS, 2, NEO_RGBW); //first number is total count, ,second number is pin# 
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMLIGHTS, 2, NEO_RGBW); //first number is total count, ,second number is pin#
 
 //colors
 uint32_t off = strip.Color (0, 0, 0, 0);
@@ -186,14 +186,16 @@ int stormGetRange(SoftwareSerial US, int usEN) {
 }
 
 void setRingLights() {
+   // Update the "current" status to reflect the new normal
+   Gear_Ring_State = next_Gear_Ring_State;
+   Shooter_Ring_State = next_Shooter_Ring_State;
+
    if (Gear_Ring_State==0) for (int i=0; i<=39; i++) strip.setPixelColor(i,off);
    if (Gear_Ring_State==1) for (int i=0; i<=39; i++) strip.setPixelColor(i,green);
    if (Shooter_Ring_State==0) for (int i=40; i<=NUMLIGHTS; i++) strip.setPixelColor(i,off);
    if (Shooter_Ring_State==1) for (int i=40; i<=NUMLIGHTS; i++) strip.setPixelColor(i,green);
-   
+
    strip.show();
-   next_Gear_Ring_State = Gear_Ring_State;
-   next_Shooter_Ring_State = Shooter_Ring_State;
 }
 
 // function that executes whenever data is requested by master
