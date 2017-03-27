@@ -19,26 +19,38 @@ unsigned long previousBlink = 0;
 const unsigned long int i2cHeartbeatTimeout = 15000; // master must talk to slave within this number of milliseconds or LED will revert to fast pulse
 volatile unsigned long previousI2C = 0;   // will store last time LED was updated
 
-const int TOTAL_LIGHTS = 45;
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(TOTAL_LIGHTS, 6,  NEO_GRBW + NEO_KHZ800); //second number is pin#
+// neopixel support
+const int NUMLIGHTS=164;
+const int NUMSTRINGS=5;
+
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMLIGHTS, 6, NEO_RGBW); //first number is total count, ,second number is pin# - probably not right
 
 //colors
-uint32_t off   = strip.Color(0, 0, 0, 0);
-uint32_t white = strip.Color(0, 0, 0, 255);
-uint32_t green = strip.Color(0, 255, 0, 0);
-uint32_t red   = strip.Color(255, 0, 0, 0);
-uint32_t blue  = strip.Color(0, 0, 255, 0);
-
+uint32_t off    = strip.Color(0, 0, 0, 0);
+uint32_t white  = strip.Color(0, 0, 0, 255);
+uint32_t yellow = strip.Color(128, 255, 0, 0);
+uint32_t red    = strip.Color(0, 255, 0, 0);
+uint32_t teal   = strip.Color(120, 1, 67, 2);
+uint32_t blue   = strip.Color(0, 0, 255, 0);
+uint32_t brown  = strip.Color(32, 255, 0, 0);
 
 //light arrays
-int modes[2][3] = {{1, 1, 255}, {1, 2, 255}}; // {mode, param1, param2}
-// dividing up the light strip into segments
-int lightStrings[2][2] = {{0, 4}, {5, 44}}; // onboard, gear ring light, shooter ring light
+int modes[5][3] = {{5, 4, 5}, {6, 3, 5}, {3, 2, 5}, {4, 4, 5}, {1, 6, 5}};
 
-// For onboard light
-//Adafruit_NeoPixel strip = Adafruit_NeoPixel(1, 6, NEO_RGBW); //second number is pin# - probably not right
-//int modes[2][3] = {{1, 2, 0}, {0, 0, 0}};
-//int lightStrings[2][2] = {{0, 0}, {0, 0}};
+int lightStrings[5][2] = {{0, 35}, {36, 67}, {68, 97}, {98, 129}, {130, 163}};
+
+//things modes need to remember   ==================
+//seizure
+long lastSeizureTime[5] = {0, 0, 0, 0, 0};
+int seizureStatus[5] = {0, 0, 0, 0, 0};
+//warp
+long warpValues[5][2] = {(0, 0), (0, 0), (0, 0), (0, 0), (0, 0)};
+//underglow
+long underglowValues[5][3] = {(0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0), (0, 0, 0)};
+//fire
+long fireValues[5][2] = {(0, 0), (0, 0), (0, 0), (0, 0), (0, 0)};
+//rainbowCycle
+long rainbowValues[5][2] = {(0, 0), (0, 0), (0, 0), (0, 0), (0, 0)};    //row 1 = last time, row 2 = counter
 
 
 void setup() {
@@ -102,23 +114,38 @@ void loop() { //main user command loop
     requestEvent();
   }
 
+
+  strip.setBrightness(96);    //this brightness change needs to be in the final code - if the lights "flake out" change this number
+
   lightLoop();
 }
 
 void lightLoop() {
-  for (int i = 0; i < 2; i++) {
+  for (int i = 0; i < NUMSTRINGS; i++) {
     switch (modes[i][0]) {
-      case 0:
-       // ringMode(i, 0);
-        break;
       case 1:
-        ringMode(i, modes[i][1], modes[i][2]);
+        ringMode(i, modes[i][1]);
+        break;
+      case 2:
+        seizure(i, modes[i][1], modes[i][2]);
+        break;
+      case 3:
+        warp(i, modes[i][1]);
+        break;
+      case 4:
+        underglow(i, modes[i][1]);
+        break;
+      case 5:
+        fire(i);
+        break;
+      case 6:
+        rainbowCycle(i, modes[i][1]);
         break;
     }
   }
 }
 
-void ringMode(int iD, int color, byte brightness) {
+void ringMode(int iD, int color) {
   for (int i = lightStrings[iD][0]; i <= lightStrings[iD][1]; i++) {
     switch (color) {
       case 0:
@@ -128,20 +155,267 @@ void ringMode(int iD, int color, byte brightness) {
         strip.setPixelColor(i, white);
         break;
       case 2:
-        strip.setPixelColor(i, green);
+        strip.setPixelColor(i, yellow);
         break;
       case 3:
         strip.setPixelColor(i, red);
+        break;
+      case 4:
+        strip.setPixelColor(i, teal);
+        break;
+      case 5:
+        strip.setPixelColor(i, blue);
+        break;
+      case 6:
+        strip.setPixelColor(i, brown);
         break;
       default:
         strip.setPixelColor(i, off);
     }
   }
-
-  strip.setBrightness(brightness);
   strip.show();
 }
 
+void seizure(int iD, int color, int delayVal) {
+  if (millis() - lastSeizureTime[iD] >= delayVal) {
+    if (seizureStatus[iD] == 0) {
+      for (int i = lightStrings[iD][0]; i <= lightStrings[iD][1]; i++) {
+        switch (color) {
+          case 0:
+            strip.setPixelColor(i, off);
+            break;
+          case 1:
+            strip.setPixelColor(i, white);
+            break;
+          case 2:
+            strip.setPixelColor(i, yellow);
+            break;
+          case 3:
+            strip.setPixelColor(i, red);
+            break;
+          case 4:
+            strip.setPixelColor(i, teal);
+            break;
+          case 5:
+            strip.setPixelColor(i, blue);
+            break;
+          case 6:
+            strip.setPixelColor(i, brown);
+            break;
+          default:
+            strip.setPixelColor(i, off);
+        }
+      }
+      seizureStatus[iD] = 1; //last status was colorful
+      lastSeizureTime[iD] = millis();
+    } else {
+      for (int i = lightStrings[iD][0]; i <= lightStrings[iD][1]; i++) {
+        strip.setPixelColor(i, off);
+      }
+      seizureStatus[iD] = 0;  //last status was off
+      lastSeizureTime[iD] = millis();
+    }
+  }
+  strip.show();
+}
+
+void warp(int iD, int color) {
+  int red, green, blue, white;
+  switch (color) {
+    case 1:   //white
+      red = 0;
+      blue = 0;
+      green = 0;
+      white = 255;
+      break;
+    case 2:   //yellow
+      red = 255;
+      blue = 0;
+      green = 128;
+      white = 0;
+      break;
+    case 3:   //red
+      red = 255;
+      blue = 0;
+      green = 0;
+      white = 0;
+      break;
+    case 4:   //teal
+      red = 1;
+      blue = 67;
+      green = 120;
+      white = 2;
+      break;
+    case 5:   //blue
+      red = 0;
+      blue = 255;
+      green = 0;
+      white = 0;
+      break;
+    case 6: //brown
+      red = 255;
+      blue = 0;
+      green = 32;
+      white = 0;
+      break;
+  }
+
+
+
+  if ((millis() - warpValues[iD][0]) >= 5) {
+    if (warpValues[iD][1] >= (lightStrings[iD][1] - lightStrings[iD][0]) * 2) {
+      // warpValues[iD][1] = 0;      //comment this out if it fixes the little 'blip' thing
+    }
+    warpValues[iD][1]++;
+    for (int i = lightStrings[iD][0]; i <= lightStrings[iD][1]; i++) {
+      strip.setPixelColor(i, ((sin(i + warpValues[iD][1]) * 127 + 128) / 255) * green,
+                          ((sin(i + warpValues[iD][1]) * 127 + 128) / 255) * red,
+                          ((sin(i + warpValues[iD][1]) * 127 + 128) / 255) * blue,
+                          ((sin(i + warpValues[iD][1]) * 127 + 128) / 255) * white);
+    }
+    strip.show();
+    warpValues[iD][0] = millis();
+  }
+}
+
+void underglow(int iD, int color) {
+  float r, g, b, w;
+  int red, blue, green, white;
+  switch (color) {
+    case 1:   //white
+      red = 0;
+      blue = 0;
+      green = 0;
+      white = 255;
+      break;
+    case 2:   //yellow
+      red = 255;
+      blue = 0;
+      green = 128;
+      white = 0;
+      break;
+    case 3:   //red
+      red = 255;
+      blue = 0;
+      green = 0;
+      white = 0;
+      break;
+    case 4:   //teal
+      red = 1;
+      blue = 67;
+      green = 120;
+      white = 2;
+      break;
+    case 5:   //blue
+      red = 0;
+      blue = 255;
+      green = 0;
+      white = 0;
+      break;
+    case 6: //brown
+      red = 255;
+      blue = 0;
+      green = 32;
+      white = 0;
+      break;
+  }
+  if ((millis() - underglowValues[iD][2]) >= 5) {
+    if (underglowValues[iD][1] == 0) {
+      r = (underglowValues[iD][0] / 256.0) * red;
+      g = (underglowValues[iD][0] / 256.0) * green;
+      b = (underglowValues[iD][0] / 256.0) * blue;
+      w = (underglowValues[iD][0] / 256.0) * white;
+      for (int q = lightStrings[iD][0]; q <= lightStrings[iD][1]; q++) {
+        strip.setPixelColor(q, g, r, b, w);
+      }
+      underglowValues[iD][0] += 8;
+      if (underglowValues[iD][0] >= 256) {
+        underglowValues[iD][0] = 255;
+        underglowValues[iD][1] = 1;
+      }
+      strip.show();
+    }
+
+    if (underglowValues[iD][1] == 1) {
+      r = (underglowValues[iD][0] / 256.0) * red;
+      g = (underglowValues[iD][0] / 256.0) * green;
+      b = (underglowValues[iD][0] / 256.0) * blue;
+      w = (underglowValues[iD][0] / 256.0) * white;
+      for (int q = lightStrings[iD][0]; q <= lightStrings[iD][1]; q++) {
+        strip.setPixelColor(q, g, r, b, w);
+      }
+      underglowValues[iD][0] = underglowValues[iD][0] - 8;
+      if (underglowValues[iD][0] <= 0) {
+        underglowValues[iD][0] = 0;
+        underglowValues[iD][1] = 0;
+      }
+      strip.show();
+    }
+    underglowValues[iD][2] = millis();
+  }
+}
+
+void fire(int iD) {
+  int r = 255;
+  int g = r - 110;
+  int b = 40;
+  if ((millis() - fireValues[iD][0]) >= fireValues[iD][1]) {
+    for (int i = lightStrings[iD][0]; i <= lightStrings[iD][1]; i++) {
+      int flicker = random(30, 150);
+      int r1 = r - flicker;
+      int g1 = g - flicker;
+      int b1 = b - flicker;
+      if (g1 < 0) g1 = 0;
+      if (r1 < 0) r1 = 0;
+      if (b1 < 0) b1 = 0;
+      strip.setPixelColor(i, g1, r1, b1, 0);
+    }
+    fireValues[iD][0] = millis();
+    fireValues[iD][1] = random(50, 150);
+    strip.show();
+
+  }
+}
+
+void rainbowCycle(int iD, int speedDelay) {
+  byte *c;
+  speedDelay = 0;
+  uint16_t i;
+  if ((millis() - rainbowValues[iD][0]) >= speedDelay) {
+    for (i = lightStrings[iD][0]; i <= lightStrings[iD][1]; i++) {
+      c = Wheel((((i - lightStrings[iD][0]) * 256 / (lightStrings[iD][1] - lightStrings[iD][0])) + rainbowValues[iD][1]) & 255);
+      strip.setPixelColor(i, *c, *(c + 1), *(c + 2), 0);
+    }
+    if (rainbowValues[iD][1] >= 256 * 5) {
+      rainbowValues[iD][1] = 0;
+    }
+    rainbowValues[iD][1]++;
+    strip.show();
+    rainbowValues[iD][0] = millis();
+  }
+}
+
+byte * Wheel(byte WheelPos) {
+  static byte c[3];
+
+  if (WheelPos < 85) {
+    c[0] = WheelPos * 3;
+    c[1] = 255 - WheelPos * 3;
+    c[2] = 0;
+  } else if (WheelPos < 170) {
+    WheelPos -= 85;
+    c[0] = 255 - WheelPos * 3;
+    c[1] = 0;
+    c[2] = WheelPos * 3;
+  } else {
+    WheelPos -= 170;
+    c[0] = 0;
+    c[1] = WheelPos * 3;
+    c[2] = 255 - WheelPos * 3;
+  }
+
+  return c;
+}
 
 // function that executes whenever data is requested by master
 // this function is registered as an event, see setup()
@@ -189,7 +463,7 @@ void handleHelpRequest() {
     printBuiltInHelp();
     // TODO - add menu items
     Serial.println("    L:  Light control [id, mode, arg1, arg2]");
-    
+
     g_commandMode = MODE_IDLE;  // This only makes sense in serialMode
   }
   else // move on - nothing to see here
@@ -198,16 +472,25 @@ void handleHelpRequest() {
 
 //================================
 void handleLightReceive() {
-  byte buffer[4];  
+  //put rest of values into mode array
   byte id;
+  byte mode;
+  byte arg1;
+  byte arg2;
 
-  //[id, mode, arg1, arg2]
-  readBytes( buffer, 4, byteType);
+  readBytes( &id , 1);
+  readBytes( &mode , 1);
+  readBytes( &arg1, 1);
+  readBytes( &arg2, 1);
 
-  id = buffer[0]; 
-  //put rest of values into mode array [mode, arg1, arg2]
-  modes[id][0] = buffer[1];
-  modes[id][1] = buffer[2];
-  modes[id][2] = buffer[3];
+  // for testing
+  // id = 1;
+  // mode = 1;
+  // arg1 = random(0,3);
+  // arg2 = 0;
+
+  modes[id][0] = mode;
+  modes[id][1] = arg1;
+  modes[id][2] = arg2;
 }
 // TODO - write handlers - see StormNetCommon.h for examples
