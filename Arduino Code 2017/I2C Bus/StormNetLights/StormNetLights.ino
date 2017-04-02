@@ -14,8 +14,11 @@ const int ledPin =  13;             // the number of the LED pin
 int ledState = LOW;                 // ledState used to set the LED
 unsigned long currentMillis = 0;
 unsigned long previousBlink = 0;
-//#define NUMLIGHTS 200
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(164, 6, NEO_RGBW); //first number is total count, ,second number is pin# - probably not right
+
+#define NUMLIGHTS 39
+#define NUMLIGHTSTRINGS 3
+int lightStrings[NUMLIGHTSTRINGS][2] = {{0, 4}, {5, 21}, {22, 38}};
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMLIGHTS, 6, NEO_RGBW); //first number is total count, ,second number is pin# - probably not right
 
 //colors
 uint32_t off = strip.Color (0, 0, 0, 0);
@@ -27,11 +30,10 @@ uint32_t blue = strip.Color(0, 0, 255, 0);
 uint32_t brown = strip.Color(32, 255, 0, 0);
 
 //light arrays
-int modes[5][3] = {{5, 4, 5}, {6, 3, 5}, {3, 2, 5}, {4, 4, 5}, {1, 6, 5}};
-
-int lightStrings[5][2] = {{0, 35}, {36, 67}, {68, 97}, {98, 129}, {130, 163}};
+int modes[NUMLIGHTSTRINGS][3] = {{6, 5, 5}, {6, 5, 5}, {6, 5, 5}};
 
 //things modes need to remember   ==================
+//These arrays needs to be AT LEAST as long as NUMLIGHTSTRINGS. They can be longer
 //seizure
 long lastSeizureTime[5] = {0, 0, 0, 0, 0};
 int seizureStatus[5] = {0, 0, 0, 0, 0};
@@ -111,7 +113,7 @@ void loop() {
 }
 
 void lightLoop() {
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < NUMLIGHTSTRINGS; i++) {
     switch (modes[i][0]) {
       case 0:
         // ringMode(i, 0);
