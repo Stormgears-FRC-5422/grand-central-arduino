@@ -1,10 +1,9 @@
-
 #include "StormNetCommon.h"
 #include <Adafruit_NeoPixel.h>
 
 
 // TODO choose a unique address
-const char I2C_ADDRESS = 13;    // each device needs its own 7 bit address (ABOVE 7)
+const char I2C_ADDRESS = 13;    // each device needs its own 7 bit address
 
 // Command modes
 const char MODE_LIGHT = 6;        // your mode here
@@ -15,24 +14,17 @@ const int ledPin =  13;             // the number of the LED pin
 int ledState = LOW;                 // ledState used to set the LED
 unsigned long currentMillis = 0;
 unsigned long previousBlink = 0;
-
-const unsigned long int i2cHeartbeatTimeout = 15000; // master must talk to slave within this number of milliseconds or LED will revert to fast pulse
-volatile unsigned long previousI2C = 0;   // will store last time LED was updated
-
-// neopixel support
-const int NUMLIGHTS=164;
-const int NUMSTRINGS=5;
-
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMLIGHTS, 6, NEO_RGBW); //first number is total count, ,second number is pin# - probably not right
+//#define NUMLIGHTS 200
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(164, 6, NEO_RGBW); //first number is total count, ,second number is pin# - probably not right
 
 //colors
-uint32_t off    = strip.Color(0, 0, 0, 0);
-uint32_t white  = strip.Color(0, 0, 0, 255);
+uint32_t off = strip.Color (0, 0, 0, 0);
+uint32_t white = strip.Color(0, 0, 0, 255);
 uint32_t yellow = strip.Color(128, 255, 0, 0);
-uint32_t red    = strip.Color(0, 255, 0, 0);
-uint32_t teal   = strip.Color(120, 1, 67, 2);
-uint32_t blue   = strip.Color(0, 0, 255, 0);
-uint32_t brown  = strip.Color(32, 255, 0, 0);
+uint32_t red = strip.Color(0, 255, 0, 0);
+uint32_t teal = strip.Color(120, 1, 67, 2);
+uint32_t blue = strip.Color(0, 0, 255, 0);
+uint32_t brown = strip.Color(32, 255, 0, 0);
 
 //light arrays
 int modes[5][3] = {{5, 4, 5}, {6, 3, 5}, {3, 2, 5}, {4, 4, 5}, {1, 6, 5}};
@@ -52,6 +44,10 @@ long fireValues[5][2] = {(0, 0), (0, 0), (0, 0), (0, 0), (0, 0)};
 //rainbowCycle
 long rainbowValues[5][2] = {(0, 0), (0, 0), (0, 0), (0, 0), (0, 0)};    //row 1 = last time, row 2 = counter
 
+//==================================================
+
+const unsigned long int i2cHeartbeatTimeout = 15000; // master must talk to slave within this number of milliseconds or LED will revert to fast pulse
+volatile unsigned long previousI2C = 0;   // will store last time LED was updated
 
 void setup() {
   g_i2cAddress = I2C_ADDRESS;
@@ -73,17 +69,11 @@ void setup() {
 
 }
 
-void loop() { //main user command loop
+void loop() {
+
+  //main user command loop
   // Flip to serial mode if there is anything to be read. Otherwise back to I2C mode
-  serialMode = Serial.available();
-  if (serialMode) {
-    Wire.onRequest(NULL);     // It is problematic to get wire interrupts during serial mode
-    Wire.onReceive(NULL);
-  }
-  else {
-    Wire.onRequest(requestEvent);     // register event
-    Wire.onReceive(receiveEvent);     // register event
-  }
+  //  serialMode = Serial.available();
 
   //========== flash heartbeat (etc) LED =============
   currentMillis = millis();
@@ -108,12 +98,12 @@ void loop() { //main user command loop
     digitalWrite(ledPin, ledState);   // set the LED with the ledState of the variable
   }
 
-  // Check for serial input.  Note that i2c input happens through interrupts, not here.
-  if (serialMode && Serial.available() > 0) { //diagnostic menu system starts here
-    receiveEvent(5); // call the interrupt handler directly.  We may or may not read this many bytes
-    requestEvent();
-  }
-
+   // Check for serial input.  Note that i2c input happens through interrupts, not here.
+    if (serialMode && Serial.available() > 0) { //diagnostic menu system starts here
+     receiveEvent(5); // call the interrupt handler directly.  We may or may not read this many bytes
+     requestEvent();
+    }
+  
 
   strip.setBrightness(96);    //this brightness change needs to be in the final code - if the lights "flake out" change this number
 
@@ -121,8 +111,11 @@ void loop() { //main user command loop
 }
 
 void lightLoop() {
-  for (int i = 0; i < NUMSTRINGS; i++) {
+  for (int i = 0; i < 5; i++) {
     switch (modes[i][0]) {
+      case 0:
+        // ringMode(i, 0);
+        break;
       case 1:
         ringMode(i, modes[i][1]);
         break;
@@ -460,10 +453,15 @@ void receiveEvent(int howMany) { // handles i2c write event from master
 //================================
 void handleHelpRequest() {
   if (serialMode) {
-    printBuiltInHelp();
+    Serial.println();
+    Serial.println("===== Stormgears I2C Device Help =====");
+    Serial.println("    P:  Ping - read I2C Address");
+    Serial.println("    F:  Change LED to FAST flash. Read 'FAST'");
+    Serial.println("    S:  Change LED to SLOW flash. Read 'SLOW'");
+    Serial.println("    B:  Change LED flash rate directly - pass another long to say how fast (in milliseconds)");
     // TODO - add menu items
-    Serial.println("    L:  Light control [id, mode, arg1, arg2]");
-
+    Serial.println("   \\0:  (or anything unhandled) Read unsingned int counter");
+    Serial.println("    ?:  Show this help (otherwise act like \\0)");
     g_commandMode = MODE_IDLE;  // This only makes sense in serialMode
   }
   else // move on - nothing to see here
@@ -492,5 +490,7 @@ void handleLightReceive() {
   modes[id][0] = mode;
   modes[id][1] = arg1;
   modes[id][2] = arg2;
+
+
 }
 // TODO - write handlers - see StormNetCommon.h for examples
