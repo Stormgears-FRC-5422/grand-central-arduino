@@ -1,5 +1,5 @@
 #include <Wire.h>
-const int I2C_SLAVE_ADDRESS=8;
+const int I2C_SLAVE_ADDRESS=11;
 
 int CmdByte = 0;         // incoming serial byte
 byte lastCommand = -1;
@@ -84,7 +84,7 @@ void slave_commands(char c){
         Serial.readBytes((char*)&tmpValue, 4);
         Serial.print("sending ");
         printData((byte*)&tmpValue, 4);
-        Wire.write((char*)&tmpValue, 4);
+        Wire.write((byte*)&tmpValue, 4);
         break;
       default:
         //Nothing more to send
