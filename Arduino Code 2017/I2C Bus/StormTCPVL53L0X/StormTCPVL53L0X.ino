@@ -6,7 +6,13 @@
 
 // Command modes
 const char MODE_LIDAR = 6;        // your mode here
+const char MODE_I2C_MASTER = 7;   // unpacks a stormnet i2c command to pass downstream and back
 // TODO: add more modes
+
+// These are a bit aggressive to save memory.  Keep an eye on them
+byte g_i2cCommandBuffer[32]; 
+byte g_i2cRequestBuffer[64]; 
+byte g_i2cRequestSize;
 
 // blink control
 const int ledPin =  13;             // the number of the LED pin
@@ -281,6 +287,9 @@ void requestEvent() {
     case MODE_HELP:
       handleHelpRequest();
       break;
+    case MODE_I2C_MASTER:
+      handleI2CMasterRequest();
+      break;
     default:
       requestBuiltIn();
   }
@@ -303,6 +312,10 @@ void receiveEvent(int howMany) { // handles i2c write event from master
         break;
     case '?':
       g_commandMode = MODE_HELP;
+      break;
+    case '@':
+      g_commandMode = MODE_I2C_MASTER;
+      handleI2CMasterReceive();
       break;
     default:
       receiveBuiltIn(c);
@@ -328,6 +341,38 @@ void handleLidarRequest() {
  
   writeShorts(lidarReadings, NUM_LIDARS, g_talkMode);
 }
-// TODO - write handlers - see StormNetCommon.h for examples
 
+void handleI2CMasterReceive() {
+  byte buffer[3];
+
+  byte g_i2cAddress;
+  byte receiveSize;
+
+  readBytes(buffer, 3);
+  g_i2cAddress = buffer[0];
+  receiveSize = buffer[1];
+  g_i2cRequestSize = buffer[2];
+
+  readBytes(g_i2cCommandBuffer, receiveSize);  //buffer now contains the full i2c command string
+
+  Wire.beginTransmission(g_i2cAddress);
+    Wire.write(g_i2cCommandBuffer, receiveSize);
+  Wire.endTransmission(g_i2cAddress);
+}
+
+void handleI2CMasterRequest() {
+  byte b;
+
+  g_i2cRequestBuffer[0] = 1; // success (how would we fail?)
+
+  Wire.requestFrom((int)g_i2cAddress, (int)g_i2cRequestSize);
+  for (int i=0; i< g_i2cRequestSize; i++) {
+    if (Wire.available()) {
+      b = Wire.read();    // receive a byte
+      g_i2cRequestBuffer[i+1] = b;
+    }
+  }
+
+  writeBytes((void*)g_i2cRequestBuffer, g_i2cRequestSize + 1, byteType, g_talkMode);
+}
 
