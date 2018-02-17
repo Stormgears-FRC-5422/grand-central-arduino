@@ -336,43 +336,48 @@ void handleHelpRequest() {
 }
 
 void handleLidarRequest() {
-  if (serialMode)
+  if (g_talkMode == serialMode) {
     Serial.println("we are in lidar request");
- 
+  }
+   
   writeShorts(lidarReadings, NUM_LIDARS, g_talkMode);
 }
 
 void handleI2CMasterReceive() {
   byte buffer[3];
-
-  byte g_i2cAddress;
   byte receiveSize;
 
-  readBytes(buffer, 3);
+  readBytes(buffer, 3, byteType);
   g_i2cAddress = buffer[0];
   receiveSize = buffer[1];
   g_i2cRequestSize = buffer[2];
 
-  readBytes(g_i2cCommandBuffer, receiveSize);  //buffer now contains the full i2c command string
-
+  if (g_talkMode == serialMode) {
+    while (!Serial.available()) {;}  // wait for the character to show up
+  }
+  
+  readBytes(g_i2cCommandBuffer, receiveSize, byteType);  //buffer now contains the full i2c command string
+  
   Wire.beginTransmission(g_i2cAddress);
     Wire.write(g_i2cCommandBuffer, receiveSize);
   Wire.endTransmission(g_i2cAddress);
+
 }
 
 void handleI2CMasterRequest() {
   byte b;
-
-  g_i2cRequestBuffer[0] = 1; // success (how would we fail?)
+  g_i2cRequestBuffer[0] = 0; // start pessimistic - assume fail
 
   Wire.requestFrom((int)g_i2cAddress, (int)g_i2cRequestSize);
   for (int i=0; i< g_i2cRequestSize; i++) {
     if (Wire.available()) {
+      g_i2cRequestBuffer[0] = 1; // succeeding, at least
+
       b = Wire.read();    // receive a byte
       g_i2cRequestBuffer[i+1] = b;
     }
   }
-
+  
   writeBytes((void*)g_i2cRequestBuffer, g_i2cRequestSize + 1, byteType, g_talkMode);
 }
 

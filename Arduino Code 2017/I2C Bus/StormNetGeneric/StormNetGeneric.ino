@@ -1,7 +1,7 @@
 #include "StormNetCommon.h"
 
 // TODO choose a unique address
-const char I2C_ADDRESS = 11;    // each device needs its own 7 bit address
+const char I2C_ADDRESS = 65;    // each device needs its own 7 bit address
 
 // Command modes
 // const char MODE_X = 6;        // your mode here
@@ -80,6 +80,7 @@ void loop() { //main user command loop
 // this function is registered as an event, see setup()
 // this function can also be called at other times (say via events coming through Serial)
 void requestEvent() {
+  Serial.println("In requestEvent");
   previousI2C = currentMillis;      // reset the comm timeout clock
   switch(g_commandMode) {
 // TODO - new modes
@@ -96,6 +97,7 @@ void requestEvent() {
 
 //================================
 void receiveEvent(int howMany) { // handles i2c write event from master
+  Serial.println("In receiveEvent");
   char c;
   // reset the comm timeout clock
   previousI2C = currentMillis;
