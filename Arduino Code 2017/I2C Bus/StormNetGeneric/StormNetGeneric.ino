@@ -35,17 +35,17 @@ void setup() {
 
 void loop() { //main user command loop
   // Flip to serial mode if there is anything to be read. Otherwise back to I2C mode
-  serialMode = Serial.available();
-  if (serialMode) {
+  if (Serial.available()) {
+    g_talkMode = serialMode;   
     Wire.onRequest(NULL);     // It is problematic to get wire interrupts during serial mode
     Wire.onReceive(NULL);
   }
   else {
+    g_talkMode = I2CMode;
     Wire.onRequest(requestEvent);     // register event
     Wire.onReceive(receiveEvent);     // register event
   }
-
-
+  
   //========== flash heartbeat (etc) LED =============
   currentMillis = millis();
   // the interrupts could change the value of g_blinkInterval which can mess with this logic
@@ -70,7 +70,7 @@ void loop() { //main user command loop
   }
 
   // Check for serial input.  Note that i2c input happens through interrupts, not here.
-  if (serialMode && Serial.available() > 0) { //diagnostic menu system starts here
+  if (g_talkMode == serialMode && Serial.available() > 0) { //diagnostic menu system starts here
     receiveEvent(5); // call the interrupt handler directly.  We may or may not read this many bytes
     requestEvent();
   }
@@ -118,7 +118,7 @@ void receiveEvent(int howMany) { // handles i2c write event from master
 
 //================================
 void handleHelpRequest() {
-  if (serialMode) {
+  if (g_talkMode == serialMode) {
     printBuiltInHelp();
     g_commandMode = MODE_IDLE;  // This only makes sense in serialMode
   }
