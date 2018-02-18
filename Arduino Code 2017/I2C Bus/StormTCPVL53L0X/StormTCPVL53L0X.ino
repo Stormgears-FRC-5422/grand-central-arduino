@@ -133,6 +133,8 @@ void setup()
   // Test scan to make sure everything was properly configured above.
   Serial.println("About to run I2CScan...");
   I2CScan();  // Uncomment this to see addresses for all I2C devices on the bus  
+  digitalWrite(LED_BUILTIN, HIGH);   // turn the LED back on. Eventually the comm blink will take over
+  delay(5000);
 }
 
 void loop()
