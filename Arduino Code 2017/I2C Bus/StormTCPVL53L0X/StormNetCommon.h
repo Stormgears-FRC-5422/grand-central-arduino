@@ -11,7 +11,11 @@ const char MODE_FAST = 3;         // blink the LED fast.  Request reply with wor
 const char MODE_PING = 4;         // send back the word PING on request
 const char MODE_BLINK = 5;        // you tell me how fast to blink. Expects milliseconds as a long
 
-char g_i2cAddress = 0;
+byte g_i2cAddress = 0;
+// TODO this should be more dynamic
+#define MAX_I2C_ADDRESSES 16
+byte g_i2cAddresses[MAX_I2C_ADDRESSES] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+
 volatile char g_commandMode = 0;
 volatile unsigned int g_counter = 0;           // global counter for default handler
 volatile long g_blinkInterval = 100;           // interval at which to blink (milliseconds)
@@ -64,6 +68,7 @@ void I2CScan() {
       Serial.print(address, HEX);
       Serial.println("  !");
 
+      g_i2cAddresses[nDevices] = address;
       nDevices++;
     }
     else if (error == 4)

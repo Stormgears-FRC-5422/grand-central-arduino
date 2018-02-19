@@ -7,12 +7,14 @@
 // Command modes
 const char MODE_LIDAR = 6;        // your mode here
 const char MODE_I2C_MASTER = 7;   // unpacks a stormnet i2c command to pass downstream and back
+const char MODE_I2C_ADDRESSES = 8;
 // TODO: add more modes
 
 // These are a bit aggressive to save memory.  Keep an eye on them
 byte g_i2cCommandBuffer[32]; 
 byte g_i2cRequestBuffer[64]; 
 byte g_i2cRequestSize;
+
 
 // blink control
 const int ledPin =  13;             // the number of the LED pin
@@ -66,7 +68,7 @@ void setup()
 
   // Apparently there isn't a way to tell whether the Serial usb is connected or not, but this should be harmless if not.
   // note that Serial resets when the usb cable is connected, so we can be sure that setup will be called at that time
-  Serial.begin(9600);             // start serial port at 9600 bps and wait for port to open
+  Serial.begin(115200);             // start serial port at 9600 bps and wait for port to open
   Serial.println();
   Serial.println("Stormgears I2C Slave Device Diagnostic System");
   Serial.println("Hit '?' for Help");
@@ -289,6 +291,9 @@ void requestEvent() {
     case MODE_HELP:
       handleHelpRequest();
       break;
+    case MODE_I2C_ADDRESSES:
+      handleI2CAddressesRequest();
+      break;
     case MODE_I2C_MASTER:
       handleI2CMasterRequest();
       break;
@@ -314,6 +319,10 @@ void receiveEvent(int howMany) { // handles i2c write event from master
         break;
     case '?':
       g_commandMode = MODE_HELP;
+      break;
+    case 'A':
+      g_commandMode = MODE_I2C_ADDRESSES;
+      handleI2CAddressesReceive();
       break;
     case '@':
       g_commandMode = MODE_I2C_MASTER;
@@ -344,6 +353,15 @@ void handleLidarRequest() {
    
   writeShorts(lidarReadings, NUM_LIDARS, g_talkMode);
 }
+
+void handleI2CAddressesReceive() {
+  ; // nothing to see here. The work has already been done at startup.
+}
+
+void handleI2CAddressesRequest() {
+  writeBytes((void*)g_i2cAddresses, MAX_I2C_ADDRESSES, byteType, g_talkMode);
+}
+
 
 void handleI2CMasterReceive() {
   byte buffer[3];
