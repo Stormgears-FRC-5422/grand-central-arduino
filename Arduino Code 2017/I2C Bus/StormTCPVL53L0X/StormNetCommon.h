@@ -45,7 +45,7 @@ enum dataType {
   doubleType
 };
 
-// Um... only call in i2c master mode
+// Only call from i2c master
 void I2CScan(boolean printOut = true) {
   byte error, address;
   int i, nDevices;
