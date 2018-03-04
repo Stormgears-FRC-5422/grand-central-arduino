@@ -12,9 +12,10 @@ const char MODE_PING = 4;         // send back the word PING on request
 const char MODE_BLINK = 5;        // you tell me how fast to blink. Expects milliseconds as a long
 
 byte g_i2cAddress = 0;
-// TODO this should be more dynamic
-#define MAX_I2C_ADDRESSES 16
-byte g_i2cAddresses[MAX_I2C_ADDRESSES] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+// TODO this could be more dynamic
+#define MAX_I2C_ADDRESSES 20
+byte g_i2cAddresses[MAX_I2C_ADDRESSES] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+#define WIRE_CLOCK 400000
 
 volatile char g_commandMode = 0;
 volatile unsigned int g_counter = 0;           // global counter for default handler
@@ -45,11 +46,12 @@ enum dataType {
 };
 
 // Um... only call in i2c master mode
-void I2CScan() {
+void I2CScan(boolean printOut = true) {
   byte error, address;
-  int nDevices;
+  int i, nDevices;
 
-  Serial.println("Scanning...");
+  if (printOut)
+    Serial.println("Scanning...");
 
   nDevices = 0;
   for (address = 1; address < 127; address++ )
@@ -62,16 +64,18 @@ void I2CScan() {
 
     if (error == 0)
     {
-      Serial.print("I2C device found at address 0x");
-      if (address < 16)
-        Serial.print("0");
-      Serial.print(address, HEX);
-      Serial.println("  !");
+      if (printOut) {
+        Serial.print("I2C device found at address 0x");
+        if (address < 16)
+          Serial.print("0");
+        Serial.print(address, HEX);
+        Serial.println("  !");
+      }
 
       g_i2cAddresses[nDevices] = address;
       nDevices++;
     }
-    else if (error == 4)
+    else if (printOut && error == 4)
     {
       Serial.print("Unknown error at address 0x");
       if (address < 16)
@@ -79,12 +83,18 @@ void I2CScan() {
       Serial.println(address, HEX);
     }
   }
-  if (nDevices == 0)
-    Serial.println("No I2C devices found\n");
-  else
-    Serial.println("done\n");
+  
+  if (printOut) {
+    if (nDevices == 0)
+      Serial.println("No I2C devices found\n");
+    else
+      Serial.println("done\n");    
+  }
 
-  delay(1000);           // wait 5 seconds for next scan
+  for (int i = nDevices ; i < MAX_I2C_ADDRESSES ; i++) {
+    g_i2cAddresses[i] = 0;
+  }
+
 }
 
 void printBuiltInHelp() {
