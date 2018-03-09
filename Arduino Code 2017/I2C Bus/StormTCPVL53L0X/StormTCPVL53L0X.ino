@@ -4,7 +4,6 @@
 
 #include "StormNetCommon.h"
 #include "PCA9633.h"
-void initializeAllNodes();
 
 // Command modes
 const char MODE_LIDAR = 6;        // your mode here
@@ -20,6 +19,7 @@ byte g_i2cRequestSize;
 
 // blink control
 const int ledPin =  13;             // the number of the LED pin
+const int enSensors = 9;
 int ledState = LOW;                 // ledState used to set the LED
 unsigned long currentMillis = 0;
 unsigned long previousBlink = 0;
@@ -43,7 +43,7 @@ const int IPPort=5422;
 EthernetServer server(IPPort);
 EthernetClient ethernetClient;
 
-#define NUM_LIDARS 8  // Total number of installed LiDar sensors
+#define NUM_LIDARS 8  // Total number of installed LiDar sensors (maximum - fewer is OK)
 VL53L0X *sensors[NUM_LIDARS] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
 short lidarReadings[NUM_LIDARS] = { 0, 0, 0, 0, 0, 0, 0, 0};  //  An integer array for storing sensor readings
 byte nodeAddress[NUM_LIDARS]    = { 0, 0, 0, 0, 0, 0, 0, 0};
@@ -55,7 +55,7 @@ int g_nodeCount = 0;  // how many do we actually find?
 #define LIDAR_NODE_BASE_ADDRESS 0x04  
 #define LIDAR_RANGE_THRESHOLD 2000
 
-boolean g_showLidarActivity = false;
+boolean g_showLidarActivity = true;
 
 void setup()
 { 
@@ -65,6 +65,7 @@ void setup()
   previousI2C = millis();           // start the timer now
   previousBlink = previousI2C;
   pinMode(ledPin, OUTPUT);          // set the digital pin as output
+  pinMode(enSensors, OUTPUT);
 
   // Apparently there isn't a way to tell whether the Serial usb is connected or not, but this should be harmless if not.
   // note that Serial resets when the usb cable is connected, so we can be sure that setup will be called at that time
@@ -79,21 +80,27 @@ void setup()
   Serial.print("server is at ");
   Serial.println(Ethernet.localIP());
 
+  digitalWrite(enSensors, LOW);
+  delay(250);
+  digitalWrite(enSensors, HIGH);
+  delay(250);
+  
   Wire.begin();  // I2C for lidar sensors
   Wire.setClock(WIRE_CLOCK);
 
   // Look for all devices. The ones between ids 16 - 31 are special - assume they are lidar nodes
+  //delay(5000);
   Serial.println("Initial I2C scan...");
-//  I2CScan(true);  // Uncomment this to see addresses for all I2C devices on the bus  
+  I2CScan(true);  // Uncomment this to see addresses for all I2C devices on the bus  
 
   initializeAllNodes();
     
   // Test scan to make sure everything was properly configured above.
   Serial.println("Secondary I2C scan...");
-//  I2CScan(true);  // Uncomment this to see addresses for all I2C devices on the bus  
+  I2CScan(true);  // Uncomment this to see addresses for all I2C devices on the bus  
 
   digitalWrite(LED_BUILTIN, HIGH);   // turn the LED back on. Eventually the comm blink will take over
-//  delay(5000);  // hold so we can see the steady LED indicating A-OK
+  delay(3000);  // hold so we can see the steady LED indicating A-OK
 }
 
 
@@ -103,8 +110,8 @@ void loop()
     
   // Get some reading and note if we are in range
   for (int i=0 ; i< g_nodeCount; i++) {
-//    lidarReadings[i] = sensors[i]->readRangeContinuousMillimeters();
-// 
+    lidarReadings[i] = sensors[i]->readRangeContinuousMillimeters();
+ 
 //    if (g_showLidarActivity) {
 //      if (lidarReadings[i] > 0 && lidarReadings[i] < LIDAR_RANGE_THRESHOLD) { 
 //        LEDOUT(nodeAddress[i], WHITE, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
@@ -332,7 +339,7 @@ void initializeLidarNode(int index) {
   LEDOUT(addr, CYAN, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR);
   delay(XSHUT_ON_WAIT); // give it a moment  
 
-  sensor->setAddress(addr + LIDAR_ADDRESS_MASK); // that is, set the lidar i2c address to MASK + node address. Nice and simple - just add a bit
+  //sensor->setAddress(addr + LIDAR_ADDRESS_MASK); // that is, set the lidar i2c address to MASK + node address. Nice and simple - just add a bit
   sensor->init();
   sensor->setTimeout(500);
   sensor->startContinuous();
@@ -346,18 +353,16 @@ void initializeAllNodes()
   I2CScan(true);
   for (i = 0, index = 0; i < MAX_I2C_ADDRESSES ; i++) {
     if (g_i2cAddresses[i] >= LIDAR_NODE_BASE_ADDRESS && g_i2cAddresses[i] < LIDAR_ADDRESS_MASK) {
+      Serial.print("Found node ");
+      Serial.print(i);
+      Serial.print(" at i2c address ");
+      Serial.println(g_i2cAddresses[i]);
       addr = g_i2cAddresses[i];
-      nodeAddress[index] = addr;
-//      PCA9633_WriteRegister(addr, PCA9633_MODE1, B00000001);  // Start basic node 0 Keep the all call address running
-//      PCA9633_WriteRegister(addr, PCA9633_MODE2, B00000000);  // Set OUTDRV(bit 2) to open drain. Keep INVRT (bit 4) at 0
-//      LEDOUT(addr, YELLOW, LEDOUT_XSHUT_OFF, PWM_ON_WITH_LIDAR); // Start by turning off all of the lidar devices
+      nodeAddress[index++] = addr;
 
-//DELETEME
-      PCA9633_WriteRegister(addr, PCA9633_MODE1, B00000000);  // Start basic node 0 Keep the all call address running
-//      PCA9633_WriteRegister(addr, PCA9633_MODE2, B00000000);  // Set OUTDRV(bit 2) to open drain. Keep INVRT (bit 4) at 0
-      LEDOUT(addr, YELLOW, LEDOUT_XSHUT_OFF, PWM_ON_WITH_LIDAR); // Start by turning off all of the lidar devices
-//END
-      index++;
+      PCA9633_WriteRegister(addr, PCA9633_MODE1, B00000001);  // Start basic node 0 Keep the all call address running
+      PCA9633_WriteRegister(addr, PCA9633_MODE2, B00000000);  // Set OUTDRV(bit 2) to open drain. Keep INVRT (bit 4) at 0
+      LEDOUT(addr, YELLOW, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); // Start by turning off all of the lidar devices
     }
     g_nodeCount = index;
   }
@@ -365,10 +370,14 @@ void initializeAllNodes()
 
   for (i = 0; i < g_nodeCount ; i++) {
 //    initializeLidarNode(i);
-    // DELETEME
-    addr = g_i2cAddresses[i];
+// DELETEME
+    addr = nodeAddress[i];
     LEDOUT(addr, CYAN, LEDOUT_XSHUT_OFF, PWM_ON_WITH_LIDAR);
 
+    Serial.print("Setup index ");
+    Serial.print(i);
+    Serial.print(" at address ");
+    Serial.println(nodeAddress[i]);
     delay(500);
   }
 }

@@ -17,7 +17,7 @@
 
 #define LEDOUT_XSHUT_ON 0
 #define LEDOUT_XSHUT_OFF 255
-#define XSHUT_ON_WAIT 25
+#define XSHUT_ON_WAIT 100
 
 #define BLACK 0,0,0
 #define RED 255,0,0
@@ -46,30 +46,18 @@ void PCA9633_WriteRegister(byte addr, byte reg, byte data)
 //usage. (PCA9633 address, RGB value)
 void LEDOUT(int addr, int r, int g, int b, int l, int mode)
 {
-//  g_ledout = 0xA9; // reset to 1010 1001 is PWM PWM PWM ON
-  
-//  //XOR LEDOUT register address for selected color red
-//  //This turns the LED on completely for 255, rather than PWM
-//  //uses stupid bit tricks to flip from 10 to 01
-//  if (r == 255)
-//    g_ledout = g_ledout ^ 0x0C;
-//
-//  if (g == 255)
-//    g_ledout = g_ledout ^ 0x30;
-//
-//  if (b == 255)
-//    g_ledout = g_ledout ^ 0xC0;
 
   //Set PWM register for each color
   PCA9633_WriteRegister(addr, PCA9633_RED, r);
   PCA9633_WriteRegister(addr, PCA9633_GREEN, g);
   PCA9633_WriteRegister(addr, PCA9633_BLUE, b); 
-//  PCA9633_WriteRegister(addr, PCA9633_LIDAR, l);
+  PCA9633_WriteRegister(addr, PCA9633_LIDAR, l);
   
   //Set LED driver output state
   PCA9633_WriteRegister(addr, PCA9633_PWM_ON, mode);
 }
 
+/* sketchy - not used.  Just use above method with color codes and mode
 void XSHUT(int addr, boolean on) {
   if (!on) {
     PCA9633_WriteRegister(addr, PCA9633_LIDAR, 255);
@@ -81,6 +69,6 @@ void XSHUT(int addr, boolean on) {
     //Set LED driver output state
     PCA9633_WriteRegister(addr, PCA9633_PWM_ON, ALL_ON_NOT_LIDAR);
   }
-}
+} */
 
 

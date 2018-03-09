@@ -14,7 +14,6 @@ const char MODE_BLINK = 5;        // you tell me how fast to blink. Expects mill
 byte g_i2cAddress = 0;
 // TODO this could be more dynamic
 #define MAX_I2C_ADDRESSES 24
-// FIXME
 byte g_i2cAddresses[MAX_I2C_ADDRESSES] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 #define WIRE_CLOCK 100000
 
@@ -57,7 +56,7 @@ void I2CScan(boolean printOut = true) {
   nDevices = 0;
   for (address = 1; address < 127; address++ )
   {
-    if (address == 41) continue;
+//    if (address == 41) continue;
     
     // The i2c_scanner uses the return value of
     // the Write.endTransmisstion to see if
