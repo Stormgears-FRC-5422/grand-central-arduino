@@ -13,9 +13,10 @@ const char MODE_BLINK = 5;        // you tell me how fast to blink. Expects mill
 
 byte g_i2cAddress = 0;
 // TODO this could be more dynamic
-#define MAX_I2C_ADDRESSES 20
-byte g_i2cAddresses[MAX_I2C_ADDRESSES] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-#define WIRE_CLOCK 400000
+#define MAX_I2C_ADDRESSES 24
+// FIXME
+byte g_i2cAddresses[MAX_I2C_ADDRESSES] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+#define WIRE_CLOCK 100000
 
 volatile char g_commandMode = 0;
 volatile unsigned int g_counter = 0;           // global counter for default handler
@@ -56,6 +57,8 @@ void I2CScan(boolean printOut = true) {
   nDevices = 0;
   for (address = 1; address < 127; address++ )
   {
+    if (address == 41) continue;
+    
     // The i2c_scanner uses the return value of
     // the Write.endTransmisstion to see if
     // a device did acknowledge to the address.
@@ -65,11 +68,11 @@ void I2CScan(boolean printOut = true) {
     if (error == 0)
     {
       if (printOut) {
-        Serial.print("I2C device found at address 0x");
-        if (address < 16)
-          Serial.print("0");
-        Serial.print(address, HEX);
-        Serial.println("  !");
+        if (nDevices == 0) Serial.print("I2C device found at address ");
+//        if (address < 16)
+//          Serial.print("0");
+        Serial.print(address);
+        Serial.print(", ");
       }
 
       g_i2cAddresses[nDevices] = address;
@@ -88,7 +91,7 @@ void I2CScan(boolean printOut = true) {
     if (nDevices == 0)
       Serial.println("No I2C devices found\n");
     else
-      Serial.println("done\n");    
+      Serial.println("\ndone\n");    
   }
 
   for (int i = nDevices ; i < MAX_I2C_ADDRESSES ; i++) {

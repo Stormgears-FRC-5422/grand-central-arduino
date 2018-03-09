@@ -55,6 +55,7 @@ int g_nodeCount = 0;  // how many do we actually find?
 #define LIDAR_NODE_BASE_ADDRESS 0x04  
 #define LIDAR_RANGE_THRESHOLD 2000
 
+boolean g_showLidarActivity = false;
 
 void setup()
 { 
@@ -83,36 +84,48 @@ void setup()
 
   // Look for all devices. The ones between ids 16 - 31 are special - assume they are lidar nodes
   Serial.println("Initial I2C scan...");
-  I2CScan(true);  // Uncomment this to see addresses for all I2C devices on the bus  
+//  I2CScan(true);  // Uncomment this to see addresses for all I2C devices on the bus  
 
   initializeAllNodes();
     
   // Test scan to make sure everything was properly configured above.
   Serial.println("Secondary I2C scan...");
-  I2CScan(true);  // Uncomment this to see addresses for all I2C devices on the bus  
+//  I2CScan(true);  // Uncomment this to see addresses for all I2C devices on the bus  
 
   digitalWrite(LED_BUILTIN, HIGH);   // turn the LED back on. Eventually the comm blink will take over
-  delay(5000);  // hold so we can see the steady LED indicating A-OK
+//  delay(5000);  // hold so we can see the steady LED indicating A-OK
 }
 
 
 void loop()
 {   
-  int level = 64;
- 
+//  I2CScan(true);
+    
   // Get some reading and note if we are in range
   for (int i=0 ; i< g_nodeCount; i++) {
-    lidarReadings[i] = sensors[i]->readRangeContinuousMillimeters();
-
-    if (lidarReadings[i] > 0 && lidarReadings[i] < LIDAR_RANGE_THRESHOLD) { 
-      LEDOUT(nodeAddress[i], WHITE, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
-    } else if (lidarReadings[i] == -1) {      
-      LEDOUT(nodeAddress[i], MAGENTA, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
-    } else {
-      LEDOUT(nodeAddress[i], CYAN, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR);
-    }
+//    lidarReadings[i] = sensors[i]->readRangeContinuousMillimeters();
+// 
+//    if (g_showLidarActivity) {
+//      if (lidarReadings[i] > 0 && lidarReadings[i] < LIDAR_RANGE_THRESHOLD) { 
+//        LEDOUT(nodeAddress[i], WHITE, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
+//      } else if (lidarReadings[i] == -1) {      
+//        LEDOUT(nodeAddress[i], MAGENTA, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
+//      } else {
+//        LEDOUT(nodeAddress[i], CYAN, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR);
+//      }    
+//    } else {
+//     LEDOUT(nodeAddress[i], BLACK, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
+//    }
+// DELETEME
+  if (g_showLidarActivity) {
+    LEDOUT(nodeAddress[i], GREEN, LEDOUT_XSHUT_OFF, PWM_ON_WITH_LIDAR); 
+  } else {
+    LEDOUT(nodeAddress[i], BLACK, LEDOUT_XSHUT_OFF, PWM_ON_WITH_LIDAR); 
+  }
+// END  
   }
 
+  
   // Flip to serial mode if there is anything to be read. Otherwise back to I2C mode
   if (Serial.available()) {
     g_talkMode = serialMode;
@@ -150,7 +163,7 @@ void loop()
     requestEvent();
   }
 
-  socket_loop();
+//  socket_loop();
 }
 
 
@@ -222,6 +235,9 @@ void receiveEvent(int howMany) { // handles i2c write event from master
       g_commandMode = MODE_I2C_MASTER;
       handleI2CMasterReceive();
       break;
+    case '!':
+      g_showLidarActivity = !g_showLidarActivity;
+      // fall through to default handling  
     default:
       receiveBuiltIn(c);
   }
@@ -313,13 +329,6 @@ void initializeLidarNode(int index) {
   sensor = new VL53L0X();
   sensors[index] = sensor;
       
-  Serial.print("Initializing index = ");
-  Serial.print(index);
-  Serial.print(" addr = ");
-  Serial.print(addr);
-  Serial.print(" sensor is ");
-  Serial.println((long)sensor);
-
   LEDOUT(addr, CYAN, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR);
   delay(XSHUT_ON_WAIT); // give it a moment  
 
@@ -327,8 +336,6 @@ void initializeLidarNode(int index) {
   sensor->init();
   sensor->setTimeout(500);
   sensor->startContinuous();
-  Serial.print("lidar sensor address is "); 
-  Serial.println(sensor->getAddress());
 }
 
 void initializeAllNodes() 
@@ -341,19 +348,28 @@ void initializeAllNodes()
     if (g_i2cAddresses[i] >= LIDAR_NODE_BASE_ADDRESS && g_i2cAddresses[i] < LIDAR_ADDRESS_MASK) {
       addr = g_i2cAddresses[i];
       nodeAddress[index] = addr;
-      PCA9633_WriteRegister(addr, PCA9633_MODE1, 0x01);  // Start basic node 0 Keep the all call address running
+//      PCA9633_WriteRegister(addr, PCA9633_MODE1, B00000001);  // Start basic node 0 Keep the all call address running
+//      PCA9633_WriteRegister(addr, PCA9633_MODE2, B00000000);  // Set OUTDRV(bit 2) to open drain. Keep INVRT (bit 4) at 0
+//      LEDOUT(addr, YELLOW, LEDOUT_XSHUT_OFF, PWM_ON_WITH_LIDAR); // Start by turning off all of the lidar devices
+
+//DELETEME
+      PCA9633_WriteRegister(addr, PCA9633_MODE1, B00000000);  // Start basic node 0 Keep the all call address running
+//      PCA9633_WriteRegister(addr, PCA9633_MODE2, B00000000);  // Set OUTDRV(bit 2) to open drain. Keep INVRT (bit 4) at 0
       LEDOUT(addr, YELLOW, LEDOUT_XSHUT_OFF, PWM_ON_WITH_LIDAR); // Start by turning off all of the lidar devices
+//END
       index++;
     }
     g_nodeCount = index;
   }
-  delay(1000);
+  delay(500);
 
   for (i = 0; i < g_nodeCount ; i++) {
-    initializeLidarNode(i);
-    Serial.print("Initialized sensor ");
-    Serial.println(nodeAddress[i]);
-    delay(1000);
+//    initializeLidarNode(i);
+    // DELETEME
+    addr = g_i2cAddresses[i];
+    LEDOUT(addr, CYAN, LEDOUT_XSHUT_OFF, PWM_ON_WITH_LIDAR);
+
+    delay(500);
   }
 }
 

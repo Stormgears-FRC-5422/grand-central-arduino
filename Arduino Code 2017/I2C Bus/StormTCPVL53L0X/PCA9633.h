@@ -64,7 +64,7 @@ void LEDOUT(int addr, int r, int g, int b, int l, int mode)
   PCA9633_WriteRegister(addr, PCA9633_RED, r);
   PCA9633_WriteRegister(addr, PCA9633_GREEN, g);
   PCA9633_WriteRegister(addr, PCA9633_BLUE, b); 
-  PCA9633_WriteRegister(addr, PCA9633_LIDAR, l);
+//  PCA9633_WriteRegister(addr, PCA9633_LIDAR, l);
   
   //Set LED driver output state
   PCA9633_WriteRegister(addr, PCA9633_PWM_ON, mode);
