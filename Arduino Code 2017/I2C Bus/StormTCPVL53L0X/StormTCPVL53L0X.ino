@@ -43,10 +43,10 @@ const int IPPort=5422;
 EthernetServer server(IPPort);
 EthernetClient ethernetClient;
 
-#define NUM_LIDARS 8  // Total number of installed LiDar sensors (maximum - fewer is OK)
-VL53L0X *sensors[NUM_LIDARS] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
-short lidarReadings[NUM_LIDARS] = { 0, 0, 0, 0, 0, 0, 0, 0};  //  An integer array for storing sensor readings
-byte nodeAddress[NUM_LIDARS]    = { 0, 0, 0, 0, 0, 0, 0, 0};
+#define NUM_LIDARS 16  // Total number of installed LiDar sensors (maximum - fewer is OK)
+VL53L0X *sensors[NUM_LIDARS] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
+short lidarReadings[NUM_LIDARS] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};  //  An integer array for storing sensor readings
+byte nodeAddress[NUM_LIDARS]    = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 int g_nodeCount = 0;  // how many do we actually find?
 
 // The base below cannot overlap with the above mask when you add NUM_LIDARS to the base
@@ -54,6 +54,7 @@ int g_nodeCount = 0;  // how many do we actually find?
 #define LIDAR_ADDRESS_MASK 0x20
 #define LIDAR_NODE_BASE_ADDRESS 0x04  
 #define LIDAR_RANGE_THRESHOLD 2000
+#define LIDAR_TIMING_BUDGET 100000
 
 boolean g_showLidarActivity = true;
 
@@ -110,21 +111,22 @@ void loop()
     
   // Get some reading and note if we are in range
   for (int i=0 ; i< g_nodeCount; i++) {
-    lidarReadings[i] = sensors[i]->readRangeContinuousMillimeters();
+//    lidarReadings[i] = sensors[i]->readRangeContinuousMillimeters();
+    lidarReadings[i] = sensors[i]->readRangeSingleMillimeters();
   }
    
-  for (int i=0 ; i< g_nodeCount; i++) {
-    if (g_showLidarActivity) {
-      if (lidarReadings[i] > 0 && lidarReadings[i] < LIDAR_RANGE_THRESHOLD) { 
-        LEDOUT(nodeAddress[i], WHITE, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
-      } else if (lidarReadings[i] == -1) {      
-        LEDOUT(nodeAddress[i], MAGENTA, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
-      } else {
-        LEDOUT(nodeAddress[i], CYAN, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR);
-      }    
-    } else {
-     LEDOUT(nodeAddress[i], BLACK, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
-    }
+//  for (int i=0 ; i< g_nodeCount; i++) {
+//    if (g_showLidarActivity) {
+//      if (lidarReadings[i] > 0 && lidarReadings[i] < LIDAR_RANGE_THRESHOLD) { 
+//        LEDOUT(nodeAddress[i], WHITE, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
+//      } else if (lidarReadings[i] == -1) {      
+//        LEDOUT(nodeAddress[i], MAGENTA, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
+//      } else {
+//        LEDOUT(nodeAddress[i], CYAN, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR);
+//      }    
+//    } else {
+//     LEDOUT(nodeAddress[i], BLACK, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
+//    }
 // DELETEME
 //  if (g_showLidarActivity) {
 //    LEDOUT(nodeAddress[i], RED, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
@@ -132,9 +134,23 @@ void loop()
 //    LEDOUT(nodeAddress[i], BLACK, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
 //  }
 // END  
-    if (g_showLidarActivity) delay(250);
-  }
 
+    if (g_showLidarActivity) {
+      for (int i=0; i < NUM_LIDARS; i+=2) {
+        if (lidarReadings[i] > 0 && lidarReadings[i] < LIDAR_RANGE_THRESHOLD &&
+            lidarReadings[i+1] > 0 && lidarReadings[i+1] < LIDAR_RANGE_THRESHOLD &&
+            abs(lidarReadings[i] - lidarReadings[i+1]) < 20) { 
+          LEDOUT(nodeAddress[i], GREEN, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
+          LEDOUT(nodeAddress[i+1], GREEN, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
+        } else {
+          LEDOUT(nodeAddress[i], BLUE, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
+          LEDOUT(nodeAddress[i+1], BLUE, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
+        }
+      }
+    }
+
+//    if (g_showLidarActivity) delay(250);
+// }
   
   // Flip to serial mode if there is anything to be read. Otherwise back to I2C mode
   if (Serial.available()) {
@@ -345,7 +361,12 @@ void initializeLidarNode(int index) {
   sensor->setAddress(addr + LIDAR_ADDRESS_MASK); // that is, set the lidar i2c address to MASK + node address. Nice and simple - just add a bit
   sensor->init();
   sensor->setTimeout(500);
-  sensor->startContinuous();
+  sensor->setSignalRateLimit(0.1);
+  sensor->setVcselPulsePeriod(VL53L0X::VcselPeriodPreRange, 18);
+  sensor->setVcselPulsePeriod(VL53L0X::VcselPeriodFinalRange, 14);
+  sensor->setMeasurementTimingBudget(LIDAR_TIMING_BUDGET);
+  
+//  sensor->startContinuous();
 }
 
 void initializeAllNodes() 
