@@ -9,6 +9,8 @@
 const char MODE_LIDAR = 6;        // your mode here
 const char MODE_I2C_MASTER = 7;   // unpacks a stormnet i2c command to pass downstream and back
 const char MODE_I2C_ADDRESSES = 8;
+const char MODE_LIDAR_PAIR = 9;  // Give me pair 0, etc.  0 means index 0, 1 N means index 2*N, 2*N+1
+const char MODE_LIDAR_PAIR_THRESHOLD = 10; // Set the distance threshold to indicate same distance for a pair of lidars (all pairs share same threshold)
 // TODO: add more modes
 
 // These are a bit aggressive to save memory.  Keep an eye on them
@@ -44,17 +46,20 @@ EthernetServer server(IPPort);
 EthernetClient ethernetClient;
 
 #define NUM_LIDARS 16  // Total number of installed LiDar sensors (maximum - fewer is OK)
-VL53L0X *sensors[NUM_LIDARS] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
-short lidarReadings[NUM_LIDARS] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};  //  An integer array for storing sensor readings
-byte nodeAddress[NUM_LIDARS]    = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-int g_nodeCount = 0;  // how many do we actually find?
-
 // The base below cannot overlap with the above mask when you add NUM_LIDARS to the base
 // The idea is that we will create the lidar i2c address by adding the bitmask to the base address of the node
 #define LIDAR_ADDRESS_MASK 0x20
 #define LIDAR_NODE_BASE_ADDRESS 0x04  
 #define LIDAR_RANGE_THRESHOLD 2000
 #define LIDAR_TIMING_BUDGET 100000
+#define LIDAR_PAIR_MAX_THRESHOLD 40
+
+VL53L0X *sensors[NUM_LIDARS] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
+short lidarReadings[NUM_LIDARS] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};  //  An integer array for storing sensor readings
+byte nodeAddress[NUM_LIDARS]    = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+int g_nodeCount = 0;  // how many do we actually find?
+volatile long g_lidarPair = 0;
+volatile long g_lidarPairThreshold = LIDAR_PAIR_MAX_THRESHOLD / 2;
 
 boolean g_showLidarActivity = true;
 
@@ -115,43 +120,20 @@ void loop()
     lidarReadings[i] = sensors[i]->readRangeSingleMillimeters();
   }
    
-//  for (int i=0 ; i< g_nodeCount; i++) {
-//    if (g_showLidarActivity) {
-//      if (lidarReadings[i] > 0 && lidarReadings[i] < LIDAR_RANGE_THRESHOLD) { 
-//        LEDOUT(nodeAddress[i], WHITE, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
-//      } else if (lidarReadings[i] == -1) {      
-//        LEDOUT(nodeAddress[i], MAGENTA, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
-//      } else {
-//        LEDOUT(nodeAddress[i], CYAN, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR);
-//      }    
-//    } else {
-//     LEDOUT(nodeAddress[i], BLACK, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
-//    }
-// DELETEME
-//  if (g_showLidarActivity) {
-//    LEDOUT(nodeAddress[i], RED, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
-//  } else {
-//    LEDOUT(nodeAddress[i], BLACK, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
-//  }
-// END  
-
-    if (g_showLidarActivity) {
-      for (int i=0; i < NUM_LIDARS; i+=2) {
-        if (lidarReadings[i] > 0 && lidarReadings[i] < LIDAR_RANGE_THRESHOLD &&
-            lidarReadings[i+1] > 0 && lidarReadings[i+1] < LIDAR_RANGE_THRESHOLD &&
-            abs(lidarReadings[i] - lidarReadings[i+1]) < 20) { 
-          LEDOUT(nodeAddress[i], GREEN, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
-          LEDOUT(nodeAddress[i+1], GREEN, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
-        } else {
-          LEDOUT(nodeAddress[i], BLUE, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
-          LEDOUT(nodeAddress[i+1], BLUE, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
-        }
+  if (g_showLidarActivity) {
+    for (int i=0; i < NUM_LIDARS; i+=2) {
+      if (lidarReadings[i] > 0 && lidarReadings[i] < LIDAR_RANGE_THRESHOLD &&
+          lidarReadings[i+1] > 0 && lidarReadings[i+1] < LIDAR_RANGE_THRESHOLD &&
+          abs(lidarReadings[i] - lidarReadings[i+1]) < g_lidarPairThreshold) { 
+        LEDOUT(nodeAddress[i], GREEN, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
+        LEDOUT(nodeAddress[i+1], GREEN, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
+      } else {
+        LEDOUT(nodeAddress[i], BLUE, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
+        LEDOUT(nodeAddress[i+1], BLUE, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
       }
     }
+  }
 
-//    if (g_showLidarActivity) delay(250);
-// }
-  
   // Flip to serial mode if there is anything to be read. Otherwise back to I2C mode
   if (Serial.available()) {
     g_talkMode = serialMode;
@@ -189,7 +171,7 @@ void loop()
     requestEvent();
   }
 
-//  socket_loop();
+  socket_loop();
 }
 
 
@@ -221,6 +203,12 @@ void requestEvent() {
     case MODE_LIDAR:
       handleLidarRequest();
       break;
+    case MODE_LIDAR_PAIR:
+      handleLidarPairRequest();
+      break;
+    case MODE_LIDAR_PAIR_THRESHOLD:
+      handleLidarPairThresholdRequest();
+      break;
     case MODE_HELP:
       handleHelpRequest();
       break;
@@ -249,6 +237,14 @@ void receiveEvent(int howMany) { // handles i2c write event from master
 //      break;
     case 'L':
         g_commandMode = MODE_LIDAR;
+        break;
+    case 'R':
+        g_commandMode = MODE_LIDAR_PAIR;
+        handleLidarPairReceive();
+        break;
+    case 'T':
+        g_commandMode = MODE_LIDAR_PAIR_THRESHOLD;
+        handleLidarPairThresholdReceive();
         break;
     case '?':
       g_commandMode = MODE_HELP;
@@ -288,6 +284,68 @@ void handleLidarRequest() {
   }
    
   writeShorts(lidarReadings, NUM_LIDARS, g_talkMode);
+}
+
+// No need for handleLidarReceive()
+
+void handleLidarPairRequest() {
+  if (g_talkMode == serialMode) {
+    Serial.println("we are in lidar pair request");
+  }
+   
+  writeShorts(lidarReadings + 2*g_lidarPair, 2, g_talkMode); // two shorts per pair
+}
+
+void handleLidarPairReceive() {
+  long pair;
+
+  readLongs(&pair, 1);
+
+  // just for status. Doesn't get sent back to master device
+  switch (g_talkMode) {
+    case serialMode:
+      Serial.print("pair now ");
+      Serial.println(pair);
+      break;
+    case ethernetMode:
+    default:
+      break;
+  }
+
+  if (pair < 0 || pair > NUM_LIDARS / 2)
+    pair = 0;
+    
+  g_lidarPair = pair;
+}
+
+void handleLidarPairThresholdRequest() {
+  if (g_talkMode == serialMode) {
+    Serial.println("we are in lidar pair threshold request");
+  }
+   
+  writeBytes((void*)&g_lidarPairThreshold, 4, longType, g_talkMode);
+}
+
+void handleLidarPairThresholdReceive() {
+  long t;
+
+  readLongs(&t, 1);
+
+  // just for status. Doesn't get sent back to master device
+  switch (g_talkMode) {
+    case serialMode:
+      Serial.print("threshold now ");
+      Serial.println(t);
+      break;
+    case ethernetMode:
+    default:
+      break;
+  }
+
+  if (t < 0 || t > LIDAR_PAIR_MAX_THRESHOLD)
+    t = LIDAR_PAIR_MAX_THRESHOLD;
+
+  g_lidarPairThreshold = t;
 }
 
 void handleI2CAddressesReceive() {
