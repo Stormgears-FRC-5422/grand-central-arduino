@@ -59,7 +59,7 @@ short lidarReadings[NUM_LIDARS] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 byte nodeAddress[NUM_LIDARS]    = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 int g_nodeCount = 0;  // how many do we actually find?
 volatile long g_lidarPair = 0;
-volatile long g_lidarPairThreshold = LIDAR_PAIR_MAX_THRESHOLD / 2;
+volatile long g_lidarPairThreshold = 5;
 
 boolean g_showLidarActivity = true;
 
@@ -113,11 +113,13 @@ void setup()
 void loop()
 {   
 //  I2CScan(true);
-    
+//  Serial.print("millis: ");
+//  Serial.println( millis() );
+  
   // Get some reading and note if we are in range
   for (int i=0 ; i< g_nodeCount; i++) {
-//    lidarReadings[i] = sensors[i]->readRangeContinuousMillimeters();
-    lidarReadings[i] = sensors[i]->readRangeSingleMillimeters();
+    lidarReadings[i] = sensors[i]->readRangeContinuousMillimeters();
+//    lidarReadings[i] = sensors[i]->readRangeSingleMillimeters();
   }
    
   if (g_showLidarActivity) {
@@ -271,7 +273,11 @@ void receiveEvent(int howMany) { // handles i2c write event from master
 void handleHelpRequest() {
   if (g_talkMode == serialMode) {
     printBuiltInHelp();
+    Serial.println("    A:  Reset I2C addresses");
     Serial.println("    L:  Print lidar values");
+    Serial.println("    R:  Report lidar pair [value 0, 1 2]");
+    Serial.println("    T:  Change range threshold [value in mm]");
+    Serial.println("    !:  Show lidar activity (on LEDs)");
     g_commandMode = MODE_IDLE;  // This only makes sense in g_talkMode == serialMode
   }
   else // move on - nothing to see here
@@ -424,7 +430,7 @@ void initializeLidarNode(int index) {
   sensor->setVcselPulsePeriod(VL53L0X::VcselPeriodFinalRange, 14);
   sensor->setMeasurementTimingBudget(LIDAR_TIMING_BUDGET);
   
-//  sensor->startContinuous();
+  sensor->startContinuous();
 }
 
 void initializeAllNodes() 
@@ -452,15 +458,6 @@ void initializeAllNodes()
 
   for (i = 0; i < g_nodeCount ; i++) {
     initializeLidarNode(i);
-// DELETEME
-//    addr = nodeAddress[i];
-//    LEDOUT(addr, CYAN, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR);
-
-//    Serial.print("Setup index ");
-//    Serial.print(i);
-//    Serial.print(" at address ");
-//    Serial.println(nodeAddress[i]);
-//    delay(500);
   }
 }
 
