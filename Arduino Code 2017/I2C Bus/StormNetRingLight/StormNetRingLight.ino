@@ -24,9 +24,10 @@ volatile unsigned long previousI2C = 0;   // will store last time LED was update
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMLIGHTS, 2, NEO_RGBW); //first number is total count, ,second number is pin#
 
 //colors
+// TODO - need to make the brightness scalable or check the api.
 uint32_t off = strip.Color(0, 0, 0, 0);
 uint32_t white = strip.Color(0, 0, 0, 255);
-uint32_t green = strip.Color(255, 0, 0, 0);
+uint32_t green = strip.Color(31, 0, 0, 0);  // DIM
 uint32_t red = strip.Color(0, 255, 0, 0);
 uint32_t teal = strip.Color(120, 1, 67, 2);
 uint32_t blue = strip.Color(0, 0, 255, 0);
