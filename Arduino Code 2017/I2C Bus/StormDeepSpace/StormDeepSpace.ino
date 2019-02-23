@@ -1,22 +1,26 @@
-#include <Wire.h>
+#include <Adafruit_NeoPixel.h>
 #include <Ethernet.h>
 #include <VL53L0X.h>
-
 #include "StormNetCommon.h"
 #include "PCA9633.h"
+
 
 // Based on 2018 StormTCPVL53L0X.ino
 // adds line sensors (Cytron LSS05) to enable tape following in Deep Space competition.
 
 // Command modes
-const char MODE_LIDAR = 6;        // your mode here
-const char MODE_I2C_MASTER = 7;   // unpacks a stormnet i2c command to pass downstream and back
-const char MODE_I2C_ADDRESSES = 8;
-const char MODE_LIDAR_PAIR = 9;  // Give me pair 0, etc.  0 means index 0, 1 N means index 2*N, 2*N+1
-const char MODE_LIDAR_PAIR_THRESHOLD = 10; // Set the distance threshold to indicate same distance for a pair of lidars (all pairs share same threshold)
+const char MODE_TIMER = 6; // Give me an up-to-date timer value (for diagnostics)
+const char MODE_LIDAR = 7;        // your mode here
+const char MODE_I2C_MASTER = 8;   // unpacks a stormnet i2c command to pass downstream and back
+const char MODE_I2C_ADDRESSES = 9;
+const char MODE_LIDAR_PAIR = 10;  // Give me pair 0, etc.  0 means index 0, 1 N means index 2*N, 2*N+1
+const char MODE_LIDAR_PAIR_THRESHOLD = 11; // Set the distance threshold to indicate same distance for a pair of lidars (all pairs share same threshold)
 
-const char MODE_LINE_VALUE = 11; // Give me a number between -1 and 1 to indicate how far along the set of sensors I am
-const char MODE_TIMER = 12; // Give me an up-to-date timer value (for diagnostics)
+const char MODE_LINE_VALUE = 12; // Give me a number between -1 and 1 to indicate how far along the set of sensors I am
+
+const char MODE_RING_OFF = 13;
+const char MODE_RING_ON = 14;
+const char MODE_RING_COLOR = 15;
 
 // TODO: add more modes
 
@@ -40,6 +44,8 @@ const int enSensors = 9;
 int ledState = LOW;                 // ledState used to set the LED
 unsigned long currentMillis = 0;
 unsigned long previousBlink = 0;
+unsigned long previousTransmit = 0;
+unsigned long transmitInterval = 1000; // milliseconds - not sure what the right number is here.
 unsigned long timerMillis = 0;
 unsigned long timerResults[3] = {0,0,0};
 
@@ -55,14 +61,14 @@ byte mac[] = {
 
 IPAddress ip(10, 54, 22, 177);
 const int IPPort=5422;
+EthernetClient client = NULL;
 
 // Initialize the Ethernet server library
 // with the IP address and port you want to use
 // (port 80 is default for HTTP):
 EthernetServer server(IPPort);
-EthernetClient ethernetClient;
 
-#define NUM_LIDARS 16  // Total number of installed LiDar sensors (maximum - fewer is OK)
+#define NUM_LIDARS 2  // Total number of installed LiDar sensors (maximum - fewer is OK, more can take time transmitting)
 // The base below cannot overlap with the above mask when you add NUM_LIDARS to the base
 // The idea is that we will create the lidar i2c address by adding the bitmask to the base address of the node
 #define LIDAR_ADDRESS_MASK 0x20
@@ -71,14 +77,39 @@ EthernetClient ethernetClient;
 #define LIDAR_TIMING_BUDGET 100000
 #define LIDAR_PAIR_MAX_THRESHOLD 40
 
-VL53L0X *sensors[NUM_LIDARS] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
-short lidarReadings[NUM_LIDARS] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};  //  An integer array for storing sensor readings
-byte nodeAddress[NUM_LIDARS]    = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+// 16
+//VL53L0X *sensors[NUM_LIDARS] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
+//short lidarReadings[NUM_LIDARS] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};  //  An integer array for storing sensor readings
+//byte nodeAddress[NUM_LIDARS]    = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+// 2
+VL53L0X *sensors[NUM_LIDARS] = {NULL, NULL};
+short lidarReadings[NUM_LIDARS] = { 0, 0};  //  An integer array for storing sensor readings
+byte nodeAddress[NUM_LIDARS]    = { 0, 0};
 int g_nodeCount = 0;  // how many do we actually find?
 volatile long g_lidarPair = 0;
 volatile long g_lidarPairThreshold = 5;
 
 boolean g_showLidarActivity = true;
+
+// neopixel support
+#define NUMLIGHTS 40
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMLIGHTS, 2, NEO_RGBW); //first number is total count, ,second number is pin#
+
+//colors
+// TODO - need to make the brightness scalable or check the api.
+uint32_t off = strip.Color(0, 0, 0, 0);
+uint32_t white = strip.Color(0, 0, 0, 255);
+uint32_t green = strip.Color(23, 0, 0, 0);  // DIM
+uint32_t red = strip.Color(0, 255, 0, 0);
+uint32_t teal = strip.Color(120, 1, 67, 2);
+uint32_t blue = strip.Color(0, 0, 255, 0);
+
+uint32_t lastColor = red;
+
+char next_Ring_State=1;
+char Ring_State=0;
+
+
 
 void setup()
 { 
@@ -131,11 +162,21 @@ void setup()
 
   digitalWrite(LED_BUILTIN, HIGH);   // turn the LED back on. Eventually the comm blink will take over
   delay(3000);  // hold so we can see the steady LED indicating A-OK
+
+  strip.begin();
+  setRingLights();
 }
 
 
 void loop()
 {   
+  currentMillis = millis();
+
+  // Only bother setting the lights if the state has changed.
+  if ( (next_Ring_State != Ring_State) ) {  // TODO - add others if there are more lights!
+    setRingLights();
+  }
+
   // Right now, all of this happens in one loop.
   // TODO - look (or at least look out) for the timing here - across lidars especially
   for(int i = 0; i < NUM_LINE_PINS; i++) {
@@ -148,19 +189,22 @@ void loop()
 //    lidarReadings[i] = sensors[i]->readRangeSingleMillimeters();
   }
    
-  if (g_showLidarActivity) {
-    for (int i=0; i < NUM_LIDARS; i+=2) {
-      if (lidarReadings[i] > 0 && lidarReadings[i] < LIDAR_RANGE_THRESHOLD &&
-          lidarReadings[i+1] > 0 && lidarReadings[i+1] < LIDAR_RANGE_THRESHOLD &&
-          abs(lidarReadings[i] - lidarReadings[i+1]) < g_lidarPairThreshold) { 
-        LEDOUT(nodeAddress[i], GREEN, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
-        LEDOUT(nodeAddress[i+1], GREEN, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
-      } else {
-        LEDOUT(nodeAddress[i], BLUE, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
-        LEDOUT(nodeAddress[i+1], BLUE, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
-      }
-    }
-  }
+  // Lidar status indicators
+  // These LEDOUT calls (in this loop with NUM_LIDARS = 16) take a total of about 
+  // 11 ms as measured by the timer. This needs to be optimized or eliminated
+//  if (g_showLidarActivity) {
+//    for (int i=0; i < NUM_LIDARS; i+=2) {
+//      if (lidarReadings[i] > 0 && lidarReadings[i] < LIDAR_RANGE_THRESHOLD &&
+//          lidarReadings[i+1] > 0 && lidarReadings[i+1] < LIDAR_RANGE_THRESHOLD &&
+//          abs(lidarReadings[i] - lidarReadings[i+1]) < g_lidarPairThreshold) { 
+//        LEDOUT(nodeAddress[i], GREEN, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
+//        LEDOUT(nodeAddress[i+1], GREEN, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
+//      } else {
+//        LEDOUT(nodeAddress[i], BLUE, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
+//        LEDOUT(nodeAddress[i+1], BLUE, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
+//      }
+//    }
+//  }
 
   // Flip to serial mode if there is anything to be read. Otherwise back to I2C mode
   if (Serial.available()) {
@@ -171,17 +215,16 @@ void loop()
   }
 
   //========== flash heartbeat (etc) LED =============
-  currentMillis = millis();
   // the interrupts could change the value of g_blinkInterval which can mess with this logicL
-  //noInterrupts(); no interrupts in ethernet mode
+  //noInterrupts(); no interrupts (they don't happen) in ethernet mode
     // Blink superfast if we haven't heard from the master in a while
     if ( (currentMillis - previousI2C) > i2cHeartbeatTimeout)  // stale
       g_blinkInterval = 100;
     else
       g_blinkInterval = g_blinkInterval==100 ? 1000 : g_blinkInterval;
 
-    boolean flipNow = ( (currentMillis - previousBlink) >= g_blinkInterval);
-  //interrupts();
+  boolean flipNow = ( (currentMillis - previousBlink) >= g_blinkInterval);
+//  //interrupts();
 
   if (flipNow) {
     previousBlink = currentMillis;    // save the last time you blinked the LED
@@ -199,14 +242,43 @@ void loop()
     requestEvent();
   }
 
-  socket_loop();
+  // The trouble with mixed-mode communication is that you don't know whether the other side is going to try
+  // to read the *prior* message that was sent as a response to its request. So skip this until a better protocol can be worked out
+
+  // TODO - need a decent way to debug with this, right now just add or delete g_ethernetClient && to the condition below
+  // to allow this to work or not without that connection
+  //socket_loop(); // the connection is actually made in here
+  
+  if ( (currentMillis - previousTransmit > transmitInterval) ) {
+    send_loop();
+    previousTransmit = currentMillis;  // reset
+  }
 }
 
+void send_loop() {
+  if (g_ethernetClient) {
+    // This must match what is expected on the server side
+    handlePingRequest();  // "P", 1 * 1 bytes;  offset 0
+    handleFastRequest();  // "F", 1 * 4 bytes;  offset 1
+    handleSlowRequest();  // "S", 1 * 4 bytes;  offset 5
+    handleBlinkRequest(); // "B", 1 * 4 bytes;  offset 9
+    handleLidarRequest(); // "L", 2 * 2 bytes;  offset 13
+    handleLineValueRequest(); // "V", 2 * 4 bytes;  offset 17
+    handleTimerRequest(); // ":", 3 * 4 bytes;  offset 25
+    // length 37
+  }
+  else {
+    Serial.println("Checking for client...");
+    g_ethernetClient = server.accept();  // doesn't require input like available();
+    if (g_ethernetClient) Serial.println("Client connected...");
+  }
+  
+}
 
 void socket_loop() {
   // listen for incoming clients
   // if an incoming client connects, there will be bytes available to read:
-  EthernetClient client = server.available();
+  client = server.available();
 
   if (client) {
     g_ethernetClient = client;
@@ -216,6 +288,23 @@ void socket_loop() {
     }
   }
 }
+
+void setRingLights() {
+   // Update the "current" status to reflect the new normal
+   Ring_State = next_Ring_State;
+
+   if (Ring_State==0) for (int i=0; i<NUMLIGHTS; i++) strip.setPixelColor(i,off);
+   if (Ring_State==1) for (int i=0; i<NUMLIGHTS; i++) strip.setPixelColor(i,lastColor);
+
+   strip.show();
+}
+
+void setRingLightColor(byte R, byte G, byte B, byte W) {
+   lastColor = strip.Color(G,R,B,W);
+   setRingLights();
+}
+
+
 
 // function that executes whenever data is requested by master
 // this function is registered as an event, see setup()
@@ -239,6 +328,14 @@ void requestEvent() {
       break;
     case MODE_LIDAR_PAIR:
       handleLidarPairRequest();
+      break;
+
+    case MODE_RING_ON:
+    case MODE_RING_OFF:
+      handleRingLightRequest();
+      break;
+    case MODE_RING_COLOR:
+      handleRingLightColorRequest();
       break;
     case MODE_LIDAR_PAIR_THRESHOLD:
       handleLidarPairThresholdRequest();
@@ -300,6 +397,18 @@ void receiveEvent(int howMany) { // handles i2c write event from master
     case '!':
       g_showLidarActivity = !g_showLidarActivity;
       // fall through to default handling  
+    case '1':
+      g_commandMode = MODE_RING_ON;
+      next_Ring_State = 1;
+      break;
+    case '2':
+      g_commandMode = MODE_RING_OFF;
+      next_Ring_State = 0;
+      break;
+    case 'C':
+      g_commandMode = MODE_RING_COLOR;
+      handleRingLightColorReceive();
+      break;
     default:
       receiveBuiltIn(c);
   }
@@ -318,6 +427,10 @@ void handleHelpRequest() {
     Serial.println("    R:  Report lidar pair [value 0, 1 2]");
     Serial.println("    T:  Change range threshold [value in mm]");
     Serial.println("    !:  Show lidar activity (on LEDs)");
+    Serial.println("    1:  Ring light ON");
+    Serial.println("    2:  Ring light OFF");
+    Serial.println("    C:  Ring light color [R G B W ]");
+
     g_commandMode = MODE_IDLE;  // This only makes sense in g_talkMode == serialMode
   }
   else // move on - nothing to see here
@@ -326,9 +439,9 @@ void handleHelpRequest() {
 
 
 void handleTimerRequest() {
-  timerResults[0] = timerMillis;
-  timerResults[1] = currentMillis;
-  timerResults[2] = millis();
+  timerResults[0] = timerMillis;   // The last time we got a time report
+  timerResults[1] = currentMillis; // The beginning of the current loop
+  timerResults[2] = millis();      // right now (which is hopefully close to the current loop time(
 
   timerMillis = timerResults[2];
   writeLongs(timerResults, 3, g_talkMode);
@@ -347,7 +460,8 @@ void handleLineValueRequest() {
 
   if (count) {
     result[0] = sum / (float) count;
-    result[0] /= (lineSensorWidth / 2.0);
+    // Uncomment this to normalize to -1..1
+    // result[0] /= (lineSensorWidth / 2.0);
     result[1] = count;
   }
     
@@ -529,4 +643,39 @@ void initializeAllNodes()
   for (i = 0; i < g_nodeCount ; i++) {
     initializeLidarNode(i);
   }
+}
+
+void handleRingLightRequest() {
+  // Nothing much to say - just return the counter
+  handleDefaultRequest();
+}
+
+void handleRingLightColorReceive() {
+  byte buf[4];
+
+  readBytes(buf, 4, byteType);
+  
+  // just for status. Doesn't get sent back to master device
+  switch (g_talkMode) {
+    case serialMode:
+      Serial.print("Color now ");
+      Serial.print(buf[0], HEX);
+      Serial.print(",");
+      Serial.print(buf[1], HEX);
+      Serial.print(",");
+      Serial.print(buf[2], HEX);
+      Serial.print(",");
+      Serial.println(buf[3], HEX);
+      break;
+    case ethernetMode:
+    default:
+      break;
+  }
+
+  setRingLightColor(buf[0], buf[1], buf[2], buf[3]);
+}
+
+
+void handleRingLightColorRequest() {
+  handleDefaultRequest();
 }

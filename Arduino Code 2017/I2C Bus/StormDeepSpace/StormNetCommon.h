@@ -22,6 +22,7 @@ volatile unsigned int g_counter = 0;           // global counter for default han
 volatile long g_blinkInterval = 100;           // interval at which to blink (milliseconds)
 
 EthernetClient g_ethernetClient;
+//boolean g_ethernetClientSet = false;
 
 // default to I2C 
 // this should flip to serialMode loop() if serial.available()

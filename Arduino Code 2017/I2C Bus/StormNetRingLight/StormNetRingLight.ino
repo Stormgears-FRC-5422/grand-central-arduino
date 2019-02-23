@@ -9,6 +9,7 @@ const char I2C_ADDRESS = 8;    // each device needs its own 7 bit address
 // TODO: add more modes
 const char MODE_RING_OFF = 7;
 const char MODE_RING_ON = 8;
+const char MODE_RING_COLOR = 9;
 
 // blink control
 const int ledPin =  13;             // the number of the LED pin
@@ -20,17 +21,25 @@ const unsigned long int i2cHeartbeatTimeout = 15000; // master must talk to slav
 volatile unsigned long previousI2C = 0;   // will store last time LED was updated
 
 // neopixel support
+// This kind of light is on the SteamWorks robot:
+//#define NUMLIGHTS 40
+//Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMLIGHTS, 2, NEO_RGBW); //first number is total count, ,second number is pin#
+
 #define NUMLIGHTS 40
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMLIGHTS, 2, NEO_RGBW); //first number is total count, ,second number is pin#
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMLIGHTS, 2, NEO_RGB); //first number is total count, ,second number is pin#
 
 //colors
 // TODO - need to make the brightness scalable or check the api.
 uint32_t off = strip.Color(0, 0, 0, 0);
 uint32_t white = strip.Color(0, 0, 0, 255);
-uint32_t green = strip.Color(31, 0, 0, 0);  // DIM
+uint32_t green = strip.Color(23, 0, 0, 0);  // DIM
 uint32_t red = strip.Color(0, 255, 0, 0);
 uint32_t teal = strip.Color(120, 1, 67, 2);
 uint32_t blue = strip.Color(0, 0, 255, 0);
+
+#define LIGHTLEVEL_PIN A0
+uint32_t lastColor = green;
+int lastAnalogRead = 0;
 
 char next_Ring_State=1;
 char Ring_State=0;
@@ -44,13 +53,17 @@ void setup() {
   Wire.onRequest(requestEvent);     // register event
   Wire.onReceive(receiveEvent);     // register event
 
-  Serial.begin(9600);             // start serial port at 9600 bps and wait for port to open
+  Serial.begin(115200);             // start serial port at 9600 bps and wait for port to open
   Serial.println();
   Serial.println("Stormgears I2C Slave Device Diagnostic System");
   Serial.println("Hit '?' for Help");
 
    strip.begin();
    setRingLights();
+
+  pinMode(LIGHTLEVEL_PIN, INPUT);          // set the digital pin as output
+  lastAnalogRead = analogRead(LIGHTLEVEL_PIN);
+  Serial.println(lastAnalogRead);
 }
 
 void loop() { //main user command loop
@@ -102,9 +115,15 @@ void loop() { //main user command loop
   }
 
   // Only bother setting the lights if the state has changed.
+  if (analogRead(LIGHTLEVEL_PIN) != lastAnalogRead) {
+    lastAnalogRead = analogRead(LIGHTLEVEL_PIN);
+    setRingLightColor(0, lastAnalogRead >> 2 , 0, 0);
+    Serial.println(lastAnalogRead);
+  }
   if ( (next_Ring_State != Ring_State) ) {  // TODO - add others if there are more lights!
     setRingLights();
   }
+
 }
 
 void setRingLights() {
@@ -112,9 +131,14 @@ void setRingLights() {
    Ring_State = next_Ring_State;
 
    if (Ring_State==0) for (int i=0; i<NUMLIGHTS; i++) strip.setPixelColor(i,off);
-   if (Ring_State==1) for (int i=0; i<NUMLIGHTS; i++) strip.setPixelColor(i,green);
+   if (Ring_State==1) for (int i=0; i<NUMLIGHTS; i++) strip.setPixelColor(i,lastColor);
 
    strip.show();
+}
+
+void setRingLightColor(byte R, byte G, byte B, byte W) {
+   lastColor = strip.Color(G,R,B,W);
+   setRingLights();
 }
 
 // function that executes whenever data is requested by master
@@ -130,6 +154,9 @@ void requestEvent() {
     case MODE_RING_ON:
     case MODE_RING_OFF:
       handleRingLightRequest();
+      break;
+    case MODE_RING_COLOR:
+      handleRingLightColorRequest();
       break;
     case MODE_HELP:
       handleHelpRequest();
@@ -159,6 +186,10 @@ void receiveEvent(int howMany) { // handles i2c write event from master
       g_commandMode = MODE_RING_OFF;
       next_Ring_State = 0;
       break;
+    case 'C':
+      g_commandMode = MODE_RING_COLOR;
+      handleRingLightColorReceive();
+      break;
     case '?':
       g_commandMode = MODE_HELP;
       break;
@@ -184,6 +215,36 @@ void handleHelpRequest() {
 
 void handleRingLightRequest() {
   // Nothing much to say - just return the counter
+  handleDefaultRequest();
+}
+
+void handleRingLightColorReceive() {
+  byte buf[4];
+
+  readBytes(buf, 4, byteType);
+  
+  // just for status. Doesn't get sent back to master device
+  switch (g_talkMode) {
+    case serialMode:
+      Serial.print("Color now ");
+      Serial.print(buf[0], HEX);
+      Serial.print(",");
+      Serial.print(buf[1], HEX);
+      Serial.print(",");
+      Serial.print(buf[2], HEX);
+      Serial.print(",");
+      Serial.println(buf[3], HEX);
+      break;
+    case ethernetMode:
+    default:
+      break;
+  }
+
+  setRingLightColor(buf[0], buf[1], buf[2], buf[3]);
+}
+
+
+void handleRingLightColorRequest() {
   handleDefaultRequest();
 }
 
