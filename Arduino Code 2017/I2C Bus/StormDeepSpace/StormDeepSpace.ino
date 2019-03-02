@@ -48,7 +48,7 @@ int ledState = LOW;                 // ledState used to set the LED
 unsigned long currentMillis = 0;
 unsigned long previousBlink = 0;
 unsigned long previousTransmit = 0;
-unsigned long transmitInterval = 250; // milliseconds - not sure what the right number is here.
+unsigned long transmitInterval = 10; // milliseconds - not sure what the right number is here.
 unsigned long timerMillis = 0;
 unsigned long timerResults[3] = {0,0,0};
 
