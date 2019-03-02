@@ -1,4 +1,9 @@
 //Register address values for node
+
+#define PCA_SYSTEM_INTERRUPT_CLEAR 0x0B
+#define PCA_RESULT_INTERRUPT_STATUS 0x13
+#define PCA_RESULT_RANGE_STATUS (0x14 + 10)
+
 #define PCA9633_MODE1 0x00  // Configure PCA9633 for Mode 1
 #define PCA9633_MODE2 0x01  // Configure PCA9633 for Mode 1
 
@@ -70,5 +75,3 @@ void XSHUT(int addr, boolean on) {
     PCA9633_WriteRegister(addr, PCA9633_PWM_ON, ALL_ON_NOT_LIDAR);
   }
 } */
-
-

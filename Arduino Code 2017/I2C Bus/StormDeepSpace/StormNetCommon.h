@@ -1,5 +1,6 @@
 #include <Wire.h>
 #include <Ethernet.h>
+#include <EthernetUdp.h>
 
 // Command modes
 // You can add mode modes here, but please don't remove these
@@ -22,6 +23,8 @@ volatile unsigned int g_counter = 0;           // global counter for default han
 volatile long g_blinkInterval = 100;           // interval at which to blink (milliseconds)
 
 EthernetClient g_ethernetClient;
+EthernetUDP g_udpClient;
+
 //boolean g_ethernetClientSet = false;
 
 // default to I2C 
@@ -30,6 +33,7 @@ EthernetClient g_ethernetClient;
 enum wireMode {
   I2CMode,
   ethernetMode,
+  udpMode,
   serialMode
 };
 
@@ -204,6 +208,11 @@ void writeBytes(void* buffer, byte count, dataType dType = rawType, wireMode mod
       printData( (byte*)buffer, count, dType );
       g_ethernetClient.write((byte*)buffer, count);
       break;
+    case udpMode:
+      // TODO remove debugging
+      printData( (byte*)buffer, count, dType );
+      g_udpClient.write((byte*)buffer, count);
+      break;
     default:
       Wire.write((byte*)buffer, count);
   }
@@ -217,6 +226,9 @@ boolean readAvailable() {
       break;
     case ethernetMode:
       return g_ethernetClient.available();
+      break;
+    case udpMode :
+      return g_udpClient.available();
       break;
     default:
       return Wire.available();
@@ -243,6 +255,16 @@ byte readByte() {
       Serial.println(c, HEX);
       return c;
       break;
+    case udpMode:
+      // TODO - for this to really work, there is some setup around ParsePacket, etc. that needs to be worked out. Currently we are only writing, so no big deal
+      // BUT THIS WONT WORK until this setup has happened
+      while (!g_udpClient.available()) {;}  // wait for the character to show up
+      c = g_udpClient.read();
+      // TODO remove debugging
+      Serial.print("Received ");
+      Serial.println(c, HEX);
+      return c;
+      break;
     default:
       c = (byte)Wire.read();      
   }
@@ -257,6 +279,7 @@ void readBytes(byte* buffer, int count, dataType dType = rawType) {
       scanData(buffer, count, dType);
       break;
     case ethernetMode: // fall through
+    case udpMode:
     default:
       for (int i=0; i<count; i++)
         buffer[i] = readByte();
@@ -271,7 +294,7 @@ void readShorts(short* buffer, int count) {
 
 // Fill a buffer with "count" shorts read from the bus
 void writeShorts(short* buffer, int count, wireMode mode = I2CMode) {
-  writeBytes((byte*) buffer, count * sizeof(short), shortType, mode);
+    ((byte*) buffer, count * sizeof(short), shortType, mode);
 }
 
 // Fill a buffer with "count" longs read from the bus
@@ -340,6 +363,7 @@ void handleBlinkReceive() {
       Serial.println(interval);
       break;
     case ethernetMode:
+    case udpMode:
     default:
       break;
   }

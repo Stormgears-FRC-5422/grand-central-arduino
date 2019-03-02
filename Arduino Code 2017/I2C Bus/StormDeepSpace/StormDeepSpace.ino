@@ -1,5 +1,6 @@
 #include <Adafruit_NeoPixel.h>
 #include <Ethernet.h>
+#include <EthernetUdp.h>
 #include <VL53L0X.h>
 #include "StormNetCommon.h"
 #include "PCA9633.h"
@@ -17,20 +18,22 @@ const char MODE_LIDAR_PAIR = 10;  // Give me pair 0, etc.  0 means index 0, 1 N 
 const char MODE_LIDAR_PAIR_THRESHOLD = 11; // Set the distance threshold to indicate same distance for a pair of lidars (all pairs share same threshold)
 
 const char MODE_LINE_VALUE = 12; // Give me a number between -1 and 1 to indicate how far along the set of sensors I am
+const char MODE_LINE_VALUE_LIST = 13;
 
-const char MODE_RING_OFF = 13;
-const char MODE_RING_ON = 14;
-const char MODE_RING_COLOR = 15;
+const char MODE_RING_OFF = 14;
+const char MODE_RING_ON = 15;
+const char MODE_RING_COLOR = 16;
 
 // TODO: add more modes
 
 // for line sensors. These are analog pins that need to be used in digital mode
-#define NUM_LINE_PINS 10 // Number of pins for the line sensor
+#define NUM_LINE_PINS 15 // Number of pins for the line sensor
 byte lineCalibrationPin = 0; 
-byte lineSensorPins[NUM_LINE_PINS] = {A6, A7, A8, A9, A10, A11, A12, A13, A14, A15};
-byte lineSensorValues[NUM_LINE_PINS] =  {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-double lineSensorLocations[NUM_LINE_PINS] = {-5.75, -4.75, -3.75, -2.75, -1.75, 1.75, 2.75, 3.75, 4.75, 5.75};  // this might be slowish - could use shorts in mm??
-double lineSensorWidth = 11.5;
+byte lineSensorPins[NUM_LINE_PINS] = {31, 29, 27, 25, 23,   30, 28, 26, 24, 22,    41, 39, 37, 35, 33};  // next batch is 32, 34, 36, 38, 40
+byte calibrationPin = 42;
+byte lineSensorValues[NUM_LINE_PINS] =  {0, 0, 0, 0, 0,   0, 0, 0, 0, 0,  0, 0, 0, 0, 0};
+float lineSensorLocations[NUM_LINE_PINS] = {-8.75, -7.75, -6.75, -5.75, -4.75,   -2, -1, 0, 1, 2,   5, 6, 7, 8, 9};  // this might be slowish - could use shorts in mm??
+float lineSensorWidth = 17.75;  // from above
 
 // These are a bit aggressive to save memory.  Keep an eye on them
 byte g_i2cCommandBuffer[32]; 
@@ -45,7 +48,7 @@ int ledState = LOW;                 // ledState used to set the LED
 unsigned long currentMillis = 0;
 unsigned long previousBlink = 0;
 unsigned long previousTransmit = 0;
-unsigned long transmitInterval = 1000; // milliseconds - not sure what the right number is here.
+unsigned long transmitInterval = 250; // milliseconds - not sure what the right number is here.
 unsigned long timerMillis = 0;
 unsigned long timerResults[3] = {0,0,0};
 
@@ -53,20 +56,24 @@ unsigned long timerResults[3] = {0,0,0};
 const unsigned long int i2cHeartbeatTimeout = 15000; // master must talk to slave within this number of milliseconds or LED will revert to fast pulse
 volatile unsigned long previousI2C = 0;   // will store last time LED was updated
 
+// TODO - move this into the StormNetCommon code (do this when we make it a library)
 // Enter a MAC address and IP address for your controller below.
 // The IP address will be dependent on your local network:
 byte mac[] = {
   0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED
 };
 
-IPAddress ip(10, 54, 22, 177);
-const int IPPort=5422;
-EthernetClient client = NULL;
-
 // Initialize the Ethernet server library
 // with the IP address and port you want to use
 // (port 80 is default for HTTP):
-EthernetServer server(IPPort);
+
+IPAddress ip(10, 54, 22, 177);
+IPAddress roborioIP(10, 54, 22, 2);
+const int ipPort=5422;  // use as local listener and remote listener as well
+const int udpPort=5423;  
+EthernetClient client = NULL;
+EthernetServer server(ipPort);
+
 
 #define NUM_LIDARS 2  // Total number of installed LiDar sensors (maximum - fewer is OK, more can take time transmitting)
 // The base below cannot overlap with the above mask when you add NUM_LIDARS to the base
@@ -83,7 +90,7 @@ EthernetServer server(IPPort);
 //byte nodeAddress[NUM_LIDARS]    = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 // 2
 VL53L0X *sensors[NUM_LIDARS] = {NULL, NULL};
-short lidarReadings[NUM_LIDARS] = { 0, 0};  //  An integer array for storing sensor readings
+unsigned short lidarReadings[NUM_LIDARS] = { 0, 0};  //  An integer array for storing sensor readings
 byte nodeAddress[NUM_LIDARS]    = { 0, 0};
 int g_nodeCount = 0;  // how many do we actually find?
 volatile long g_lidarPair = 0;
@@ -99,12 +106,12 @@ Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMLIGHTS, 2, NEO_RGBW); //first num
 // TODO - need to make the brightness scalable or check the api.
 uint32_t off = strip.Color(0, 0, 0, 0);
 uint32_t white = strip.Color(0, 0, 0, 255);
-uint32_t green = strip.Color(23, 0, 0, 0);  // DIM
+uint32_t green = strip.Color(255, 0, 0, 0);  // DIM
 uint32_t red = strip.Color(0, 255, 0, 0);
 uint32_t teal = strip.Color(120, 1, 67, 2);
 uint32_t blue = strip.Color(0, 0, 255, 0);
 
-uint32_t lastColor = red;
+uint32_t lastColor = green;
 
 char next_Ring_State=1;
 char Ring_State=0;
@@ -131,9 +138,10 @@ void setup()
   // start the Ethernet connection and the server:
   Ethernet.begin(mac, ip);
   server.begin();
+  g_udpClient.begin(udpPort);
   Serial.print("server is at ");
   Serial.println(Ethernet.localIP());
-
+  
   // for line sensor
   pinMode(lineCalibrationPin, OUTPUT);
   digitalWrite(lineCalibrationPin, HIGH);  // not calibrating - set LOW to calibrate 
@@ -165,13 +173,19 @@ void setup()
 
   strip.begin();
   setRingLights();
+
+  // Finally set to blue to indicate setup has completed
+  for (int i=0; i < NUM_LIDARS; i+=2) {
+    LEDOUT(nodeAddress[i], BLUE, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
+    LEDOUT(nodeAddress[i+1], BLUE, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
+  }  
 }
 
 
 void loop()
 {   
   currentMillis = millis();
-
+  
   // Only bother setting the lights if the state has changed.
   if ( (next_Ring_State != Ring_State) ) {  // TODO - add others if there are more lights!
     setRingLights();
@@ -185,8 +199,15 @@ void loop()
   
   // Get some reading and note if we are in range
   for (int i=0 ; i< g_nodeCount; i++) {
-    lidarReadings[i] = sensors[i]->readRangeContinuousMillimeters();
-//    lidarReadings[i] = sensors[i]->readRangeSingleMillimeters();
+    // lidarReadings[i] = sensors[i]->readRangeContinuousMillimeters();
+    // This patterns comes from the Pololu implementation of readRangeContinuousMillimeters 
+    // (source code https://github.com/pololu/vl53l0x-arduino/blob/master/VL53L0X.cpp)
+    // It checks the interrupt flags directly to avoid blocking, then resets. 
+    // TODO consider timeouts
+    if (sensors[i]->readReg(PCA_RESULT_INTERRUPT_STATUS) & 0x07) { // Interrupt flag set
+      lidarReadings[i] = sensors[i]->readReg16Bit(PCA_RESULT_RANGE_STATUS);  // Read range value
+      sensors[i]->writeReg(PCA_SYSTEM_INTERRUPT_CLEAR, 0x01);  // reset interrupt
+    }
   }
    
   // Lidar status indicators
@@ -211,7 +232,8 @@ void loop()
     g_talkMode = serialMode;
   }
   else {
-    g_talkMode = ethernetMode;
+    //g_talkMode = ethernetMode;
+    g_talkMode = udpMode;
   }
 
   //========== flash heartbeat (etc) LED =============
@@ -248,15 +270,19 @@ void loop()
   // TODO - need a decent way to debug with this, right now just add or delete g_ethernetClient && to the condition below
   // to allow this to work or not without that connection
   //socket_loop(); // the connection is actually made in here
-  
+
   if ( (currentMillis - previousTransmit > transmitInterval) ) {
     send_loop();
     previousTransmit = currentMillis;  // reset
   }
 }
 
+// UDP Mode command loop
 void send_loop() {
-  if (g_ethernetClient) {
+  // It seems to take a while for the client connection to drop once it has been disconnected from the robot side
+  // Lets try UDP instead
+
+  if (g_udpClient.beginPacket(roborioIP, udpPort) ) {
     // This must match what is expected on the server side
     handlePingRequest();  // "P", 1 * 1 bytes;  offset 0
     handleFastRequest();  // "F", 1 * 4 bytes;  offset 1
@@ -266,15 +292,17 @@ void send_loop() {
     handleLineValueRequest(); // "V", 2 * 4 bytes;  offset 17
     handleTimerRequest(); // ":", 3 * 4 bytes;  offset 25
     // length 37
+    
+    if (!g_udpClient.endPacket()) {
+      Serial.write("Error ending packet!");
+    }
   }
   else {
-    Serial.println("Checking for client...");
-    g_ethernetClient = server.accept();  // doesn't require input like available();
-    if (g_ethernetClient) Serial.println("Client connected...");
+    Serial.write("Error beginning packet!");  
   }
-  
 }
 
+// Used with ethernetMode not udpMode
 void socket_loop() {
   // listen for incoming clients
   // if an incoming client connects, there will be bytes available to read:
@@ -322,6 +350,9 @@ void requestEvent() {
       break;
     case MODE_LINE_VALUE:
       handleLineValueRequest();
+      break;
+    case MODE_LINE_VALUE_LIST:
+      handleLineValueListRequest();
       break;
     case MODE_LIDAR:
       handleLidarRequest();
@@ -371,6 +402,9 @@ void receiveEvent(int howMany) { // handles i2c write event from master
         break;
     case 'V':
         g_commandMode = MODE_LINE_VALUE;
+        break;
+    case 'v': 
+        g_commandMode = MODE_LINE_VALUE_LIST;
         break;
     case 'L':
         g_commandMode = MODE_LIDAR;
@@ -422,6 +456,7 @@ void handleHelpRequest() {
     printBuiltInHelp();
     Serial.println("    ::  (colon) Return time details");
     Serial.println("    V:  Return line sensor position value");
+    Serial.println("    v:  Return line sensor position list");
     Serial.println("    A:  Reset I2C addresses");
     Serial.println("    L:  Print lidar values");
     Serial.println("    R:  Report lidar pair [value 0, 1 2]");
@@ -466,6 +501,10 @@ void handleLineValueRequest() {
   }
     
   writeFloats(result, 2, g_talkMode);
+}
+
+void handleLineValueListRequest() {
+  writeBytes((void*)lineSensorValues, NUM_LINE_PINS, byteType, g_talkMode);
 }
 
 void handleLidarRequest() {
@@ -668,6 +707,7 @@ void handleRingLightColorReceive() {
       Serial.println(buf[3], HEX);
       break;
     case ethernetMode:
+    case udpMode:
     default:
       break;
   }
