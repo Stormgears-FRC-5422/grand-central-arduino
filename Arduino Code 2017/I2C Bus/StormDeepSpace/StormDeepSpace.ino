@@ -71,7 +71,7 @@ IPAddress ip(10, 54, 22, 177);
 IPAddress roborioIP(10, 54, 22, 2);
 const int ipPort=5422;  // use as local listener and remote listener as well
 const int udpPort=5423;  
-EthernetClient client = NULL;
+EthernetClient client;
 EthernetServer server(ipPort);
 
 
@@ -479,7 +479,7 @@ void handleTimerRequest() {
   timerResults[2] = millis();      // right now (which is hopefully close to the current loop time(
 
   timerMillis = timerResults[2];
-  writeLongs(timerResults, 3, g_talkMode);
+  writeLongs((long*)timerResults, 3, g_talkMode);
 }
 
 // TODO - change this to something that does processing for PID - that is, return -1 to 1.
@@ -512,7 +512,7 @@ void handleLidarRequest() {
     Serial.println("we are in lidar request");
   }
    
-  writeShorts(lidarReadings, NUM_LIDARS, g_talkMode);
+  writeShorts((short*)lidarReadings, NUM_LIDARS, g_talkMode);
 }
 
 // No need for handleLidarReceive()
@@ -522,7 +522,7 @@ void handleLidarPairRequest() {
     Serial.println("we are in lidar pair request");
   }
    
-  writeShorts(lidarReadings + 2*g_lidarPair, 2, g_talkMode); // two shorts per pair
+  writeShorts((short*)lidarReadings + 2*g_lidarPair, 2, g_talkMode); // two shorts per pair
 }
 
 void handleLidarPairReceive() {
