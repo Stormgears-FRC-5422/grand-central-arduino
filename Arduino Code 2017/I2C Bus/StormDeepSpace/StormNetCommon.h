@@ -294,7 +294,7 @@ void readShorts(short* buffer, int count) {
 
 // Fill a buffer with "count" shorts read from the bus
 void writeShorts(short* buffer, int count, wireMode mode = I2CMode) {
-    ((byte*) buffer, count * sizeof(short), shortType, mode);
+    writeBytes((byte*) buffer, count * sizeof(short), shortType, mode);
 }
 
 // Fill a buffer with "count" longs read from the bus

@@ -504,6 +504,9 @@ void handleLineValueRequest() {
 }
 
 void handleLineValueListRequest() {
+  if (g_talkMode == serialMode) {
+    Serial.println("we are in Line Value request");
+  }
   writeBytes((void*)lineSensorValues, NUM_LINE_PINS, byteType, g_talkMode);
 }
 
