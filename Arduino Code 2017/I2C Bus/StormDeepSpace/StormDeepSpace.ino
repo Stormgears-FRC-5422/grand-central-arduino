@@ -29,10 +29,11 @@ const char MODE_RING_COLOR = 16;
 // for line sensors. These are analog pins that need to be used in digital mode
 #define NUM_LINE_PINS 15 // Number of pins for the line sensor
 byte lineCalibrationPin = 0; 
-byte lineSensorPins[NUM_LINE_PINS] = {31, 29, 27, 25, 23,   30, 28, 26, 24, 22,    41, 39, 37, 35, 33};  // next batch is 32, 34, 36, 38, 40
+//byte lineSensorPins[NUM_LINE_PINS] = {31, 29, 27, 25, 23,   30, 28, 26, 24, 22,    41, 39, 37, 35, 33};  // next batch is 32, 34, 36, 38, 40
+byte lineSensorPins[NUM_LINE_PINS] = {22, 23, 24, 25, 26,   27, 28, 29, 30, 31,   32, 33, 34, 35, 36 };  // next batch is 32, 34, 36, 38, 40
 byte calibrationPin = 42;
 byte lineSensorValues[NUM_LINE_PINS] =  {0, 0, 0, 0, 0,   0, 0, 0, 0, 0,  0, 0, 0, 0, 0};
-float lineSensorLocations[NUM_LINE_PINS] = {-8.75, -7.75, -6.75, -5.75, -4.75,   -2, -1, 0, 1, 2,   5, 6, 7, 8, 9};  // this might be slowish - could use shorts in mm??
+float lineSensorLocations[NUM_LINE_PINS] = {10, 9, 8, 7, 6,   2, 1, 0, -1, -2,  -6, -7, -8, -9, -10};  // this might be slowish - could use shorts in mm??
 float lineSensorWidth = 17.75;  // from above
 
 // These are a bit aggressive to save memory.  Keep an eye on them
@@ -100,7 +101,7 @@ boolean g_showLidarActivity = true;
 
 // neopixel support
 #define NUMLIGHTS 40
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMLIGHTS, 2, NEO_RGBW); //first number is total count, ,second number is pin#
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMLIGHTS, 5, NEO_RGBW); //first number is total count, ,second number is pin#
 
 //colors
 // TODO - need to make the brightness scalable or check the api.
@@ -126,8 +127,12 @@ void setup()
   previousI2C = millis();           // start the timer now
   previousBlink = previousI2C;
   pinMode(ledPin, OUTPUT);          // set the digital pin as output
-  pinMode(enSensors, OUTPUT);
+                   pinMode(enSensors, OUTPUT);
 
+  // Enable voltage regulator for Mega connectors
+  pinMode(9, INPUT);
+//  digitalWrite(9,HIGH);
+  
   // Apparently there isn't a way to tell whether the Serial usb is connected or not, but this should be harmless if not.
   // note that Serial resets when the usb cable is connected, so we can be sure that setup will be called at that time
   Serial.begin(115200);             // start serial port at 9600 bps and wait for port to open
@@ -154,19 +159,19 @@ void setup()
   digitalWrite(enSensors, HIGH);
   delay(500);
   
-  Wire.begin();  // I2C for lidar sensors
-  Wire.setClock(WIRE_CLOCK);
+//  Wire.begin();  // I2C for lidar sensors
+//  Wire.setClock(WIRE_CLOCK);
 
   // Look for all devices. The ones between ids 16 - 31 are special - assume they are lidar nodes
   //delay(5000);
-  Serial.println("Initial I2C scan...");
-  I2CScan(true);  // Uncomment this to see addresses for all I2C devices on the bus  
-
-  initializeAllNodes();
-    
-  // Test scan to make sure everything was properly configured above.
-  Serial.println("Secondary I2C scan...");
-  I2CScan(true);  // Uncomment this to see addresses for all I2C devices on the bus  
+//  Serial.println("Initial I2C scan...");
+//  I2CScan(true);  // Uncomment this to see addresses for all I2C devices on the bus  
+//
+//  initializeAllNodes();
+//    
+//  // Test scan to make sure everything was properly configured above.
+//  Serial.println("Secondary I2C scan...");
+//  I2CScan(true);  // Uncomment this to see addresses for all I2C devices on the bus  
 
   digitalWrite(LED_BUILTIN, HIGH);   // turn the LED back on. Eventually the comm blink will take over
   delay(3000);  // hold so we can see the steady LED indicating A-OK
@@ -175,10 +180,10 @@ void setup()
   setRingLights();
 
   // Finally set to blue to indicate setup has completed
-  for (int i=0; i < NUM_LIDARS; i+=2) {
-    LEDOUT(nodeAddress[i], BLUE, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
-    LEDOUT(nodeAddress[i+1], BLUE, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
-  }  
+//  for (int i=0; i < NUM_LIDARS; i+=2) {
+//    LEDOUT(nodeAddress[i], BLUE, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
+//    LEDOUT(nodeAddress[i+1], BLUE, LEDOUT_XSHUT_ON, PWM_ON_WITH_LIDAR); 
+//  }  
 }
 
 
@@ -193,22 +198,22 @@ void loop()
 
   // Right now, all of this happens in one loop.
   // TODO - look (or at least look out) for the timing here - across lidars especially
-  for(int i = 0; i < NUM_LINE_PINS; i++) {
-    lineSensorValues[i] = digitalRead(lineSensorPins[i]);
-  }
+//  for(int i = 0; i < NUM_LINE_PINS; i++) {
+//    lineSensorValues[i] = digitalRead(lineSensorPins[i]);
+//  }
   
-  // Get some reading and note if we are in range
-  for (int i=0 ; i< g_nodeCount; i++) {
-    // lidarReadings[i] = sensors[i]->readRangeContinuousMillimeters();
-    // This patterns comes from the Pololu implementation of readRangeContinuousMillimeters 
-    // (source code https://github.com/pololu/vl53l0x-arduino/blob/master/VL53L0X.cpp)
-    // It checks the interrupt flags directly to avoid blocking, then resets. 
-    // TODO consider timeouts
-    if (sensors[i]->readReg(PCA_RESULT_INTERRUPT_STATUS) & 0x07) { // Interrupt flag set
-      lidarReadings[i] = sensors[i]->readReg16Bit(PCA_RESULT_RANGE_STATUS);  // Read range value
-      sensors[i]->writeReg(PCA_SYSTEM_INTERRUPT_CLEAR, 0x01);  // reset interrupt
-    }
-  }
+//  // Get some reading and note if we are in range
+//  for (int i=0 ; i< g_nodeCount; i++) {
+//    // lidarReadings[i] = sensors[i]->readRangeContinuousMillimeters();
+//    // This patterns comes from the Pololu implementation of readRangeContinuousMillimeters 
+//    // (source code https://github.com/pololu/vl53l0x-arduino/blob/master/VL53L0X.cpp)
+//    // It checks the interrupt flags directly to avoid blocking, then resets. 
+//    // TODO consider timeouts
+//    if (sensors[i]->readReg(PCA_RESULT_INTERRUPT_STATUS) & 0x07) { // Interrupt flag set
+//      lidarReadings[i] = sensors[i]->readReg16Bit(PCA_RESULT_RANGE_STATUS);  // Read range value
+//      sensors[i]->writeReg(PCA_SYSTEM_INTERRUPT_CLEAR, 0x01);  // reset interrupt
+//    }
+//  }
    
   // Lidar status indicators
   // These LEDOUT calls (in this loop with NUM_LIDARS = 16) take a total of about 
@@ -283,7 +288,7 @@ void send_loop() {
   // Lets try UDP instead
 
   if (g_udpClient.beginPacket(roborioIP, udpPort) ) {
-    // This must match what is expected on the server side
+//    // This must match what is expected on the server side
     handlePingRequest();  // "P", 1 * 1 bytes;  offset 0
     handleFastRequest();  // "F", 1 * 4 bytes;  offset 1
     handleSlowRequest();  // "S", 1 * 4 bytes;  offset 5
@@ -291,7 +296,11 @@ void send_loop() {
     handleLidarRequest(); // "L", 2 * 2 bytes;  offset 13
     handleLineValueRequest(); // "V", 2 * 4 bytes;  offset 17
     handleTimerRequest(); // ":", 3 * 4 bytes;  offset 25
-    // length 37
+//    // length 37
+    
+// for debugging
+//    handleLineValueListRequest();
+
     
     if (!g_udpClient.endPacket()) {
       Serial.write("Error ending packet!");
