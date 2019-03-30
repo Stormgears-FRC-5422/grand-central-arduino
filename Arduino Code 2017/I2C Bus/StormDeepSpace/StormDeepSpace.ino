@@ -101,7 +101,11 @@ boolean g_showLidarActivity = true;
 
 // neopixel support
 #define NUMLIGHTS 40
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMLIGHTS, 5, NEO_RGBW); //first number is total count, ,second number is pin#
+// R2 test robot
+//Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMLIGHTS, 5, NEO_RGBW); //first number is total count, ,second number is pin#
+
+// R1 competition robot
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMLIGHTS, 5, NEO_RGB); //first number is total count, ,second number is pin#
 
 //colors
 // TODO - need to make the brightness scalable or check the api.
@@ -131,7 +135,6 @@ void setup()
 
   // Enable voltage regulator for Mega connectors
   pinMode(9, INPUT);
-//  digitalWrite(9,HIGH);
   
   // Apparently there isn't a way to tell whether the Serial usb is connected or not, but this should be harmless if not.
   // note that Serial resets when the usb cable is connected, so we can be sure that setup will be called at that time
@@ -198,9 +201,9 @@ void loop()
 
   // Right now, all of this happens in one loop.
   // TODO - look (or at least look out) for the timing here - across lidars especially
-//  for(int i = 0; i < NUM_LINE_PINS; i++) {
-//    lineSensorValues[i] = digitalRead(lineSensorPins[i]);
-//  }
+  for(int i = 0; i < NUM_LINE_PINS; i++) {
+    lineSensorValues[i] = digitalRead(lineSensorPins[i]);
+  }
   
 //  // Get some reading and note if we are in range
 //  for (int i=0 ; i< g_nodeCount; i++) {
@@ -288,7 +291,7 @@ void send_loop() {
   // Lets try UDP instead
 
   if (g_udpClient.beginPacket(roborioIP, udpPort) ) {
-//    // This must match what is expected on the server side
+    // This must match what is expected on the server side
     handlePingRequest();  // "P", 1 * 1 bytes;  offset 0
     handleFastRequest();  // "F", 1 * 4 bytes;  offset 1
     handleSlowRequest();  // "S", 1 * 4 bytes;  offset 5
