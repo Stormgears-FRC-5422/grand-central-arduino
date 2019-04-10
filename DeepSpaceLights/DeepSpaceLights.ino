@@ -1,6 +1,6 @@
 #include <Adafruit_NeoPixel.h>
 
-#define PIN 3
+#define PIN 6
 #define PIXELSPERGROUP 6
 #define NUMGROUPS 4
 
@@ -36,7 +36,10 @@ uint32_t colors[NUMGROUPS] = { green, white, red, purple};
 void setup() {
   Serial.begin(115200);
   strip.begin();
-  strip.show();
+  stripShow(0, white);
+  stripShow(1, white);
+  stripShow(2, white);
+  stripShow(3, white);
 }
 
 void loop()
