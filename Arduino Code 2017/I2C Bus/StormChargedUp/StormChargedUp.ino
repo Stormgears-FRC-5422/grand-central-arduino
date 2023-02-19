@@ -42,23 +42,15 @@ byte mac[] = {
   0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED
 };
 
-// Initialize the Ethernet server library
-// with the IP address and port you want to use
-// (port 80 is default for HTTP):
-
 IPAddress ip(10, 54, 22, 177);
 IPAddress roborioIP(10, 54, 22, 2);
-const int ipPort=5422;  // use as local listener and remote listener as well
 const int udpPort=5423;  
-EthernetClient client;
-EthernetServer server(ipPort);
-
 
 #define NUM_LIDARS 1  // Total number of installed LiDar sensors (maximum - fewer is OK, more can take time transmitting)
 #define LIDAR_TIMING_BUDGET 100000
 int lidarAddresses[NUM_LIDARS] = {0x29};
 VL53L0X *sensors[NUM_LIDARS] = {NULL};
-unsigned short lidarReadings[NUM_LIDARS] = { 0 };  //  An integer array for storing sensor readings
+unsigned short lidarReadings[NUM_LIDARS * 2] = { 0, 0};  //  An unsigned short array for storing sensor readings
 
 void setup()
 { 
@@ -76,22 +68,20 @@ void setup()
   // note that Serial resets when the usb cable is connected, so we can be sure that setup will be called at that time
   Serial.begin(115200);             // start serial port at 9600 bps and wait for port to open
   Serial.println();
-  Serial.println("Stormgears I2C Slave Device Diagnostic System");
+  Serial.println("Stormgears StormNet Diagnostic System");
   Serial.println("Hit '?' for Help");
 
   // start the Ethernet connection and the server:
   Ethernet.begin(mac, ip);
-  server.begin();
   g_udpClient.begin(udpPort);
   Serial.print("server is at ");
   Serial.println(Ethernet.localIP());
     
-//  Wire.begin();  // I2C for lidar sensors
-//  Wire.setClock(WIRE_CLOCK);
+  Wire.begin();  // I2C for lidar sensors
 
- for (int i=0; i < NUM_LIDARS; i++) {
-   initializeLidarNode(i);
- }  
+  for (int i=0; i < NUM_LIDARS; i++) {
+    initializeLidarNode(i);
+  }  
 
   digitalWrite(LED_BUILTIN, HIGH);   // turn the LED back on. Eventually the comm blink will take over
   delay(3000);  // hold so we can see the steady LED indicating A-OK
@@ -102,38 +92,38 @@ void loop()
 {   
   currentMillis = millis();
     
- // Get some reading and note if we are in range
- for (int i=0 ; i< NUM_LIDARS; i++) {
-   // This patterns comes from the Pololu implementation of readRangeContinuousMillimeters 
-   // (source code https://github.com/pololu/vl53l0x-arduino/blob/master/VL53L0X.cpp)
-   // It checks the interrupt flags directly to avoid blocking, then resets. 
-   // TODO consider timeouts
-   if (sensors[i]->readReg(PCA_RESULT_INTERRUPT_STATUS) & 0x07) { // Interrupt flag set
-     lidarReadings[i] = sensors[i]->readReg16Bit(PCA_RESULT_RANGE_STATUS);  // Read range value
-     sensors[i]->writeReg(PCA_SYSTEM_INTERRUPT_CLEAR, 0x01);  // reset interrupt
-   }
- }
+  // Get some reading and note if we are in range
+  for (int i=0 ; i< NUM_LIDARS; i++) {
+    // This patterns comes from the Pololu implementation of readRangeContinuousMillimeters 
+    // (source code https://github.com/pololu/vl53l0x-arduino/blob/master/VL53L0X.cpp)
+    // It checks the interrupt flags directly to avoid blocking, then resets. 
+    // TODO consider timeouts
+    if (sensors[i]->readReg(PCA_RESULT_INTERRUPT_STATUS) & 0x07) { // Interrupt flag set
+      lidarReadings[2*i] = sensors[i]->readReg16Bit(PCA_RESULT_RANGE_STATUS);  // Read range value
+      lidarReadings[2*i + 1] = 1; // TODO figure out the right way to get status code
+      sensors[i]->writeReg(PCA_SYSTEM_INTERRUPT_CLEAR, 0x01);  // reset interrupt
+    }
+  }
    
   // Flip to serial mode if there is anything to be read. Otherwise back to I2C mode
   if (Serial.available()) {
     g_talkMode = serialMode;
   }
   else {
-    //g_talkMode = ethernetMode;
     g_talkMode = udpMode;
   }
 
   //========== flash heartbeat (etc) LED =============
   // the interrupts could change the value of g_blinkInterval which can mess with this logicL
   //noInterrupts(); no interrupts (they don't happen) in ethernet mode
-    // Blink superfast if we haven't heard from the master in a while
-    if ( (currentMillis - previousI2C) > i2cHeartbeatTimeout)  // stale
-      g_blinkInterval = 100;
-    else
-      g_blinkInterval = g_blinkInterval==100 ? 1000 : g_blinkInterval;
+  // Blink superfast if we haven't heard from the master in a while
+  if ( (currentMillis - previousI2C) > i2cHeartbeatTimeout)  // stale
+    g_blinkInterval = 100;
+  else
+    g_blinkInterval = g_blinkInterval==100 ? 1000 : g_blinkInterval;
 
   boolean flipNow = ( (currentMillis - previousBlink) >= g_blinkInterval);
-//  //interrupts();
+  //interrupts();
 
   if (flipNow) {
     previousBlink = currentMillis;    // save the last time you blinked the LED
@@ -154,10 +144,6 @@ void loop()
   // The trouble with mixed-mode communication is that you don't know whether the other side is going to try
   // to read the *prior* message that was sent as a response to its request. So skip this until a better protocol can be worked out
 
-  // TODO - need a decent way to debug with this, right now just add or delete g_ethernetClient && to the condition below
-  // to allow this to work or not without that connection
-  //socket_loop(); // the connection is actually made in here
-
   if ( (currentMillis - previousTransmit > transmitInterval) ) {
     send_loop();
     previousTransmit = currentMillis;  // reset
@@ -171,13 +157,13 @@ void send_loop() {
 
   if (g_udpClient.beginPacket(roborioIP, udpPort) ) {
     // This must match what is expected on the server side
-    handlePingRequest();  // "P", 1 * 1 bytes;  offset 0
-    handleFastRequest();  // "F", 1 * 4 bytes;  offset 1
-    handleSlowRequest();  // "S", 1 * 4 bytes;  offset 5
-    handleBlinkRequest(); // "B", 1 * 4 bytes;  offset 9
-    handleLidarRequest(); // "L", 2 * 2 bytes;  offset 13
-    handleTimerRequest(); // ":", 3 * 4 bytes;  offset 25
-//    // length 37
+    handlePingRequest();  // "P", 1 * 1 bytes;  offset 0 + 1 = 1
+    handleFastRequest();  // "F", 1 * 4 bytes;  offset 1 + 4 = 5
+    handleSlowRequest();  // "S", 1 * 4 bytes;  offset 5 + 4 = 9
+    handleBlinkRequest(); // "B", 1 * 4 bytes;  offset 9 + 4 = 13
+    handleLidarRequest(); // "L", 1 * 4 bytes;  offset 13 + 4 = 17
+    handleTimerRequest(); // ":", 3 * 4 bytes;  offset 17 + 12 = 29
+//    // length 29
     
     if (!g_udpClient.endPacket()) {
       Serial.write("Error ending packet!");
@@ -185,21 +171,6 @@ void send_loop() {
   }
   else {
     Serial.write("Error beginning packet!");  
-  }
-}
-
-// Used with ethernetMode not udpMode
-void socket_loop() {
-  // listen for incoming clients
-  // if an incoming client connects, there will be bytes available to read:
-  client = server.available();
-
-  if (client) {
-    g_ethernetClient = client;
-    if (client.available()) {
-      receiveEvent(1);
-      requestEvent();
-    }
   }
 }
 
@@ -284,8 +255,8 @@ void handleLidarRequest() {
   if (g_talkMode == serialMode) {
     Serial.println("we are in lidar request");
   }
-   
-  writeShorts((short*)lidarReadings, NUM_LIDARS, g_talkMode);
+  // first short is distance, second is quality (1 is good, 0 is bad)
+  writeShorts((short*)lidarReadings, NUM_LIDARS * 2, g_talkMode);
 }
 
 // No need for handleLidarReceive()
