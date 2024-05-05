@@ -57,6 +57,7 @@ void loop() {
     received = true;
     buf[0] = '0' + (i % 4);
     buf[1] = 0;
+    buflen = strlen(buf);
     str_out = String((char*)buf);
   }
   else if (driver.recv(buf, &buflen)) {
