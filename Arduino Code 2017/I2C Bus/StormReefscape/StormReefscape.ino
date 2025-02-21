@@ -37,6 +37,7 @@ volatile unsigned long previousI2C = 0;   // will store last time LED was update
 // TODO - move this into the StormNetCommon code (do this when we make it a library)
 // Enter a MAC address and IP address for your controller below.
 // The IP address will be dependent on your local network:
+bool useNetwork = false;
 byte mac[] = {
   0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED
 };
@@ -45,10 +46,15 @@ IPAddress ip(10, 54, 22, 177);
 IPAddress roborioIP(10, 54, 22, 2);
 const int udpPort=5423;  
 
-#define NUM_LIDARS 1  // Total number of installed LiDar sensors (maximum - fewer is OK, more can take time transmitting)
+#define NUM_LIDARS 2  // Total number of installed LiDar sensors (maximum - fewer is OK, more can take time transmitting)
 #define LIDAR_TIMING_BUDGET 100000
-int lidarAddresses[NUM_LIDARS] = {0x29};
-VL53L0X *sensors[NUM_LIDARS] = {NULL};
+
+// 0x29 is the default id. This should either not be used or be the last one in the list
+int lidarAddresses[NUM_LIDARS] = {0x30, 0x31};
+int lidarXshutPins[NUM_LIDARS] = {D3, D4};    // <-- Need to put correct pins here
+
+
+VL53L0X *sensors[NUM_LIDARS] = {NULL, NULL};
 unsigned short lidarReadings[NUM_LIDARS * 2] = { 0, 0};  //  An unsigned short array for storing sensor readings
 
 void setup()
@@ -60,23 +66,34 @@ void setup()
   previousBlink = previousI2C;
   pinMode(ledPin, OUTPUT);          // set the digital pin as output
 
-  // Enable voltage regulator for Mega connectors
-  pinMode(9, INPUT);
+  Wire.begin();  // I2C for lidar sensors
+
+  // This might have something to do with the full StormNet board. Not relevant with a bare Mega.
+  // // Enable voltage regulator for Mega connectors
+  // pinMode(9, INPUT);
   
   // Apparently there isn't a way to tell whether the Serial usb is connected or not, but this should be harmless if not.
   // note that Serial resets when the usb cable is connected, so we can be sure that setup will be called at that time
-  Serial.begin(115200);             // start serial port at 9600 bps and wait for port to open
+  Serial.begin(115200);             // start serial port and wait for port to open
   Serial.println();
   Serial.println("Stormgears StormNet Diagnostic System");
   Serial.println("Hit '?' for Help");
 
-  // start the Ethernet connection and the server:
-  Ethernet.begin(mac, ip);
-  g_udpClient.begin(udpPort);
-  Serial.print("server is at ");
-  Serial.println(Ethernet.localIP());
+  if (useNetwork) {
+    // start the Ethernet connection and the server:
+    Ethernet.begin(mac, ip);
+    g_udpClient.begin(udpPort);
+    Serial.print("server is at ");
+    Serial.println(Ethernet.localIP());
+  } else {
+    Serial.println("Network is not used. Set useNetwork to true to enable");
+  }
     
-  Wire.begin();  // I2C for lidar sensors
+  // This disables the lidar devices. They will be enabled again to set their address during the initialize step
+  for (int i=0; i < NUM_LIDARS; i++) {
+    pinMode(lidarXshutPins[i], OUTPUT);
+    digitalWrite(lidarXshutPins[i], LOW);
+  }  
 
   for (int i=0; i < NUM_LIDARS; i++) {
     initializeLidarNode(i);
@@ -109,7 +126,11 @@ void loop()
     g_talkMode = serialMode;
   }
   else {
-    g_talkMode = udpMode;
+    if (useNetwork) {
+      g_talkMode = udpMode;
+    } else {
+      g_talkMode = serialMode;
+    }
   }
 
   //========== flash heartbeat (etc) LED =============
@@ -144,26 +165,23 @@ void loop()
   // to read the *prior* message that was sent as a response to its request. So skip this until a better protocol can be worked out
 
   if ( (currentMillis - previousTransmit > transmitInterval) ) {
-    send_loop();
+    if (useNetwork) {
+      udpSendLoop();
+    } else {
+      delay(1000);
+      dataLoop();
+    }
     previousTransmit = currentMillis;  // reset
   }
 }
 
 // UDP Mode command loop
-void send_loop() {
+void udpSendLoop() {
   // It seems to take a while for the client connection to drop once it has been disconnected from the robot side
   // Lets try UDP instead
 
   if (g_udpClient.beginPacket(roborioIP, udpPort) ) {
-    // This must match what is expected on the server side
-    handlePingRequest();  // "P", 1 * 1 bytes;  offset 0 + 1 = 1
-    handleFastRequest();  // "F", 1 * 4 bytes;  offset 1 + 4 = 5
-    handleSlowRequest();  // "S", 1 * 4 bytes;  offset 5 + 4 = 9
-    handleBlinkRequest(); // "B", 1 * 4 bytes;  offset 9 + 4 = 13
-    handleLidarRequest(); // "L", 1 * 4 bytes;  offset 13 + 4 = 17
-    handleTimerRequest(); // ":", 3 * 4 bytes;  offset 17 + 12 = 29
-//    // length 29
-    
+    dataLoop();    
     if (!g_udpClient.endPacket()) {
       Serial.write("Error ending packet!");
     }
@@ -173,7 +191,16 @@ void send_loop() {
   }
 }
 
-
+void dataLoop() {
+    // This must match what is expected on the server side
+    handlePingRequest();  // "P", 1 * 1 bytes;  offset 0 + 1 = 1
+    handleFastRequest();  // "F", 1 * 4 bytes;  offset 1 + 4 = 5
+    handleSlowRequest();  // "S", 1 * 4 bytes;  offset 5 + 4 = 9
+    handleBlinkRequest(); // "B", 1 * 4 bytes;  offset 9 + 4 = 13
+    handleLidarRequest(); // "L", 1 * 4 bytes;  offset 13 + 4 = 17
+    handleTimerRequest(); // ":", 3 * 4 bytes;  offset 17 + 12 = 29
+//    // length 29
+}
 // function that executes whenever data is requested by master
 // this function is registered as an event, see setup()
 // this function can also be called at other times (say via events coming through Serial)
@@ -258,12 +285,17 @@ void handleLidarRequest() {
   writeShorts((short*)lidarReadings, NUM_LIDARS * 2, g_talkMode);
 }
 
-// No need for handleLidarReceive()
 
 // Presumes lidar 
 void initializeLidarNode(int index) {
   int addr = lidarAddresses[index];
   VL53L0X *sensor = sensors[index];
+
+  // XSHUT	This pin is an active-low shutdown input; the board pulls it up to VDD to enable the sensor by default. 
+  // Driving this pin low puts the sensor into hardware standby. This input is not level-shifted and it is not 5V-tolerant.
+  // So we cannot drive it high. We need to just take the LOW away by flipping to INPUT.
+  pinMode(lidarXshutPins[i], INPUT);
+  delay(50); // wait for the device to wake up
 
   // The sensor class is pretty touchy to reentrant calls.  Let's just avoid that problem by dumping and
   // recreating them in this function
