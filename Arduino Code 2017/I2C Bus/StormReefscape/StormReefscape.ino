@@ -3,6 +3,7 @@
 #include <VL53L0X.h>  // Pololu variety
 #include "StormNetCommon.h"
 #include "PCA9633.h"
+#include <avr/wdt.h>
 
 // For 2025 Reefscape
 
@@ -84,20 +85,11 @@ void setup()
     
   Wire.begin();  // I2C for lidar sensors
 
-  for (int i=0; i < NUM_LIDARS; i++) {
-    pinMode(lidarXShutPins[i], OUTPUT);
-    digitalWrite(lidarXShutPins[i], LOW);
-  }  
-  // Take a beat
-  delay(XSHUT_ON_WAIT);
-
-  for (int i=0; i < NUM_LIDARS; i++) {
-    initializeLidarNode(i);
-  }  
+  resetLidars();
 
   digitalWrite(LED_BUILTIN, HIGH);   // turn the LED back on. Eventually the comm blink will take over
-  Serial.print("Take a moment");
-  delay(3000);  // hold so we can see the steady LED indicating A-OK
+  Serial.print("Ready");
+  // delay(3000);  // hold so we can see the steady LED indicating A-OK
 }
 
 
@@ -105,6 +97,8 @@ void loop()
 {   
   currentMillis = millis();
     
+  checkLidars();
+
   // Get some reading and note if we are in range
   for (int i=0 ; i< NUM_LIDARS; i++) {
     // This patterns comes from the Pololu implementation of readRangeContinuousMillimeters 
@@ -166,10 +160,11 @@ void loop()
       send_loop();
     } else {
       data_loop();
-      delay(5000);
+      delay(1000);
     }
     previousTransmit = currentMillis;  // reset
   }
+
 }
 
 // UDP Mode command loop
@@ -288,7 +283,35 @@ void handleLidarRequest() {
   writeShorts((short*)lidarReadings, NUM_LIDARS * 2, g_talkMode);
 }
 
+void hardReset() {
+  wdt_enable(WDTO_15MS);
+  while(1) {}
+}
+
 // No need for handleLidarReceive()
+void checkLidars() {
+  for (int i = 0 ; i < NUM_LIDARS; i++) {
+    if (lidarReadings[2*i] == 0xFFFF) {
+      Serial.println("Resetting...");
+      hardReset();
+      // resetLidars();
+      // break;
+    }
+  }
+}
+
+void resetLidars() {
+  for (int i=0; i < NUM_LIDARS; i++) {
+    pinMode(lidarXShutPins[i], OUTPUT);
+    digitalWrite(lidarXShutPins[i], LOW);
+  }  
+  // Take a beat
+  delay(XSHUT_ON_WAIT);
+
+  for (int i=0; i < NUM_LIDARS; i++) {
+    initializeLidarNode(i);
+  }  
+}  
 
 // Presumes lidar 
 void initializeLidarNode(int index) {
