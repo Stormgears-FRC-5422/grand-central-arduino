@@ -22,6 +22,9 @@
 
 */
 
+
+#define TIMER_MODE 1
+#define ROTATION_COUNT 8
 // Use the ESP32C3 Dev Module
 #define SERIAL_BAUDRATE 115200
 
@@ -119,12 +122,12 @@ double interpolate(double input_signal) {
   return -1;  // Should never reach here
 }
 
-// void irInterruptRoutine() {
-//   if (currentMillis - lastTick > debounceDelay) {
-//     IRCounter++;
-//     lastTick = currentMillis;
-//   }
-// }
+void irInterruptRoutine() {
+  if (currentMillis - lastTick > debounceDelay) {
+    IRCounter++;
+    lastTick = currentMillis;
+  }
+}
 
 void sign_setup() {
   Serial.begin(SERIAL_BAUDRATE);  // start serial port at 9600 bps and wait for port to open
@@ -136,21 +139,31 @@ void sign_setup() {
   gearTalon.attach(pwmPin);  // attaches the srvo on pin 3 to the servo object
 
   changeDirectionDelay = 1000000;  // just a big number
-  // attachInterrupt(digitalPinToInterrupt(IRDPin), irInterruptRoutine, FALLING);
+  attachInterrupt(digitalPinToInterrupt(IRDPin), irInterruptRoutine, FALLING);
 }
 
 void sign_loop() {
   currentMillis = millis();
 
-  if (currentMillis - lastChange > changeDirectionDelay * 1000) {
-    Direction = -Direction;
-    gearTalon.write(NEUTRAL);  // Don't change without stopping first
-    Serial.print("Braking. Speed = ");
-    Serial.print(talonSpeed);
-    Serial.print(" changeDirectionDelay = ");
-    Serial.println(changeDirectionDelay, 3);
-    delay(stopGearsDuration);       // Don't change instantly. This pauses the code, which isn't great. We could just set a wait state. Let's just see if this works.
-    lastChange = currentMillis + stopGearsDuration;
+  if (TIMER_MODE == 0) {
+    if (IRCounter % ROTATION_COUNT == 0) {
+      Direction = - Direction;
+      Serial.print("Changing direction after ");
+      Serial.print(IRCounter);
+      Serial.println(" rotations");
+      delay(stopGearsDuration);       // Don't change instantly. This pauses the code, which isn't great. We could just set a wait state. Let's just see if this works.
+    }
+  } else {
+    if (currentMillis - lastChange > changeDirectionDelay * 1000) {
+      Direction = -Direction;
+      gearTalon.write(NEUTRAL);  // Don't change without stopping first
+      Serial.print("Braking. Speed = ");
+      Serial.print(talonSpeed);
+      Serial.print(" changeDirectionDelay = ");
+      Serial.println(changeDirectionDelay, 3);
+      delay(stopGearsDuration);       // Don't change instantly. This pauses the code, which isn't great. We could just set a wait state. Let's just see if this works.
+      lastChange = currentMillis + stopGearsDuration;
+    }
   }
 
   sensorValue = map(analogRead(PotPin), 4095, 0, 0, maxSpeed);  // scale it to use it with the servo (value between 0 and 90)
