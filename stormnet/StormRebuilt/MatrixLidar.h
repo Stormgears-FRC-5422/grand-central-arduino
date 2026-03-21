@@ -45,15 +45,19 @@ long getMatrixLidarAverage() {
 // --- Top-level API ---
 
 void setupMatrixLidar() {
+  Serial.print("Matrix Lidar begin");
   while (tof.begin() != 0) {
-    Serial.println("begin error !!!!!");
+    Serial.print(".");
+    delay(500);
   }
-  Serial.println("begin success");
+  Serial.println(" ok");
+
+  Serial.print("Matrix Lidar ranging mode");
   while (tof.setRangingMode(eMatrix_8X8) != 0) {
-    Serial.println("init error !!!!!");
+    Serial.print(".");
     delay(1000);
   }
-  Serial.println("init success");
+  Serial.println(" ok");
 }
 
 void loopMatrixLidar() {

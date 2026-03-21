@@ -40,16 +40,21 @@ void setup() {
   Serial.begin(115200);
   Serial.println();
   Serial.println("Stormgears StormNet Diagnostic System");
-  Serial.println("Hit '?' for Help");
 
   if (useNetwork) {
     Ethernet.begin(mac, ip);
     g_udpClient.begin(udpPort);
-    Serial.print("server is at ");
-    Serial.println(Ethernet.localIP());
+    Serial.print("Network:  enabled  local ");
+    Serial.print(Ethernet.localIP());
+    Serial.print("  target ");
+    Serial.print(roborioIP);
+    Serial.print(":");
+    Serial.println(udpPort);
   } else {
-    Serial.println("Not using network. Set useNetwork to true to enable");
+    Serial.println("Network:  disabled (set useNetwork = true to enable)");
   }
+
+  Serial.println("Hit '?' for help");
 
   setup_custom();
 

@@ -425,6 +425,33 @@ bool receiveBuiltIn(char c) {
   }
 }
 
+// ===== Timer (loop timing diagnostics) =====
+// Tracks how long each main loop cycle takes. Useful as a built-in diagnostic.
+unsigned long g_timerMillis = 0;
+long g_timerResults[3] = {0, 0, 0};
+
+PacketField writeTimerData(wireMode mode) {
+  unsigned long now = millis();
+  g_timerResults[0] = g_timerMillis;
+  g_timerResults[1] = now;
+  g_timerResults[2] = millis();
+  g_timerMillis = g_timerResults[2];
+  if (mode == serialMode) {
+    Serial.print("timer: ");
+  }
+  writeLongs(g_timerResults, 3, mode);
+  return {":", "Timer", 3 * (int)sizeof(long)};
+}
+
+// ===== User hooks =====
+// Define all of these in your .ino's Device customization section.
+void setup_custom();
+void loop_custom();
+bool receive_custom(char c);
+bool request_custom();
+void data_loop_custom(wireMode mode);
+void printCustomHelp();
+
 // ===== Built-in command dispatch =====
 // Responds to the current commandMode. Called from requestEvent() in request-response mode.
 
@@ -464,24 +491,6 @@ void handleBuiltInCommand(wireMode mode) {
   }
 }
 
-// ===== Timer (loop timing diagnostics) =====
-// Tracks how long each main loop cycle takes. Useful as a built-in diagnostic.
-unsigned long g_timerMillis = 0;
-long g_timerResults[3] = {0, 0, 0};
-
-PacketField writeTimerData(wireMode mode) {
-  unsigned long now = millis();
-  g_timerResults[0] = g_timerMillis;
-  g_timerResults[1] = now;
-  g_timerResults[2] = millis();
-  g_timerMillis = g_timerResults[2];
-  if (mode == serialMode) {
-    Serial.print("timer: ");
-  }
-  writeLongs(g_timerResults, 3, mode);
-  return {":", "Timer", 3 * (int)sizeof(long)};
-}
-
 // ===== Built-in data bundle =====
 // Writes all built-in fields for a push packet. Call from data_loop() before sensor fields.
 // Accumulates into g_packetFields[]; caller must reset g_packetFieldCount first.
@@ -491,13 +500,3 @@ void data_loop_builtin(wireMode mode) {
   g_packetFields[g_packetFieldCount++] = writeBlinkData(mode);
   g_packetFields[g_packetFieldCount++] = writeTimerData(mode);
 }
-
-// ===== User hooks =====
-// Override any of these in your .ino to add sensor behaviour.
-// The weak defaults are no-ops; they are silently replaced by your definitions at link time.
-void __attribute__((weak)) setup_custom() {}
-void __attribute__((weak)) loop_custom() {}
-bool __attribute__((weak)) receive_custom(char) { return false; }
-bool __attribute__((weak)) request_custom()     { return false; }
-void __attribute__((weak)) data_loop_custom(wireMode) {}
-void __attribute__((weak)) printCustomHelp()    {}
