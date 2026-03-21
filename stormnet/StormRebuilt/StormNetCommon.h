@@ -2,8 +2,8 @@
 #include <Ethernet.h>
 #include <EthernetUdp.h>
 
-// Command modes
-// You can add mode modes here, but please don't remove these
+// ===== Built-in command modes =====
+// You can add more modes in your sensor file, but please don't remove these
 const char MODE_IDLE = -1;        // Only for serial loop
 const char MODE_DEFAULT = 0;      // send back a cycle of numbers
 const char MODE_HELP = 1;         // Serial only (!) Display help
@@ -11,6 +11,8 @@ const char MODE_SLOW = 2;         // blink the LED slow.  Request reply with wor
 const char MODE_FAST = 3;         // blink the LED fast.  Request reply with word FAST
 const char MODE_PING = 4;         // send back the word PING on request
 const char MODE_BLINK = 5;        // you tell me how fast to blink. Expects milliseconds as a long
+const char MODE_TIMER = 6;        // return loop timing diagnostics
+#define FIRST_CUSTOM_MODE 7       // sensor files should start add-on modes here
 
 byte g_i2cAddress = 0;
 // TODO this could be more dynamic
@@ -25,11 +27,9 @@ volatile long g_blinkInterval = 100;           // interval at which to blink (mi
 EthernetClient g_ethernetClient;
 EthernetUDP g_udpClient;
 
-//boolean g_ethernetClientSet = false;
-
-// default to I2C 
-// this should flip to serialMode loop() if serial.available()
-// that's the best way I can figure out how to tell if the usb is attached
+// ===== Talk mode =====
+// default to I2C
+// this should flip to serialMode in loop() if serial.available()
 enum wireMode {
   I2CMode,
   ethernetMode,
@@ -38,6 +38,19 @@ enum wireMode {
 };
 
 wireMode g_talkMode = I2CMode;
+
+// ===== Packet field descriptor =====
+// Returned by write*Data functions to self-describe the data they produce.
+// data_loop() collects these into g_packetFields; printPacketLayout() displays them.
+struct PacketField {
+  const char* label;    // protocol letter, e.g. "P"
+  const char* name;     // human-readable name, e.g. "Ping"
+  int byteCount;        // bytes written to the channel
+};
+
+#define MAX_PACKET_FIELDS 16
+PacketField g_packetFields[MAX_PACKET_FIELDS];
+int g_packetFieldCount = 0;
 
 // To help with serial display
 enum dataType {
@@ -114,6 +127,26 @@ void printBuiltInHelp() {
     Serial.println("    F:  Change LED to FAST flash. Read 'FAST'");
     Serial.println("    S:  Change LED to SLOW flash. Read 'SLOW'");
     Serial.println("    B:  Change LED flash rate directly - pass another long to say how fast (in milliseconds)");
+    Serial.println("    ::  (colon) Return time details");
+}
+
+void printPacketLayout() {
+  Serial.println("Packet layout:");
+  int offset = 0;
+  for (int i = 0; i < g_packetFieldCount; i++) {
+    Serial.print("  ");
+    Serial.print(g_packetFields[i].label);
+    Serial.print("  ");
+    Serial.print(g_packetFields[i].name);
+    Serial.print("  ");
+    Serial.print(g_packetFields[i].byteCount);
+    Serial.print(" bytes  offset ");
+    Serial.println(offset);
+    offset += g_packetFields[i].byteCount;
+  }
+  Serial.print("Total: ");
+  Serial.print(offset);
+  Serial.println(" bytes");
 }
 
 // print friendly representation of data stream to serial port
@@ -204,13 +237,9 @@ void writeBytes(void* buffer, byte count, dataType dType = rawType, wireMode mod
       printData( (byte*)buffer, count, dType );
       break;
     case ethernetMode:
-      // TODO remove debugging
-      printData( (byte*)buffer, count, dType );
       g_ethernetClient.write((byte*)buffer, count);
       break;
     case udpMode:
-      // TODO remove debugging
-      printData( (byte*)buffer, count, dType );
       g_udpClient.write((byte*)buffer, count);
       break;
     default:
@@ -324,93 +353,151 @@ void writeDoubles(double* buffer, int count, wireMode mode = I2CMode) {
   writeBytes((byte*) buffer, count * sizeof(double), doubleType, mode);
 }
 
-// Handlers
-void handleDefaultRequest() {
-  writeBytes((void*)&g_counter, sizeof(unsigned int), shortType, g_talkMode);
+// ===== Write functions =====
+// Write current state to the specified channel. No state changes happen here —
+// state is updated in the receive path (receiveBuiltIn). Each returns a PacketField
+// descriptor; callers that don't need it can ignore the return value.
+
+PacketField writeDefaultData(wireMode mode) {
+  writeBytes((void*)&g_counter, sizeof(unsigned int), shortType, mode);
   g_counter++;
+  return {"-", "Counter", (int)sizeof(unsigned int)};
 }
 
-void handlePingRequest() {
-  writeBytes((void*)&g_i2cAddress, 1, byteType, g_talkMode);
+PacketField writePingData(wireMode mode) {
+  writeBytes((void*)&g_i2cAddress, 1, byteType, mode);
+  return {"P", "Ping", 1};
 }
 
-void handleSlowRequest() {
-  g_blinkInterval = 1500;
-  writeBytes((void*)"SLOW", 4, textType, g_talkMode);
+PacketField writeFastData(wireMode mode) {
+  writeBytes((void*)"FAST", 4, textType, mode);
+  return {"F", "Fast", 4};
 }
 
-void handleFastRequest() {
-  g_blinkInterval = 250;
-  writeBytes((void*)"FAST", 4, textType, g_talkMode);
+PacketField writeSlowData(wireMode mode) {
+  writeBytes((void*)"SLOW", 4, textType, mode);
+  return {"S", "Slow", 4};
 }
 
-void handleBlinkRequest() {
-  writeBytes((void*)&g_blinkInterval, 4, longType, g_talkMode);
+PacketField writeBlinkData(wireMode mode) {
+  writeBytes((void*)&g_blinkInterval, 4, longType, mode);
+  return {"B", "Blink", 4};
 }
 
-void handleBlinkReceive() {
-  long interval;
+// ===== Receive functions =====
+// Process incoming commands and update Arduino state. No output.
 
-  readLongs(&interval, 1);
-
-  // just for status. Doesn't get sent back to master device
-  switch (g_talkMode) {
-    case serialMode:
-      Serial.print("Interval now ");
-      Serial.println(interval);
-      break;
-    case ethernetMode:
-    case udpMode:
-    default:
-      break;
-  }
-
-  if (interval < 0)
-    interval = 2000;
-  g_blinkInterval = interval;
-}
-
-void receiveBuiltIn(char c) {
+bool receiveBuiltIn(char c) {
   switch(c) {
     case 'P':
       g_commandMode = MODE_PING;
-      break;
+      return true;
     case 'S':
       g_commandMode = MODE_SLOW;
-      break;
+      g_blinkInterval = 1500;
+      return true;
     case 'F':
       g_commandMode = MODE_FAST;
-      break;
-    case 'B':
+      g_blinkInterval = 250;
+      return true;
+    case 'B': {
       g_commandMode = MODE_BLINK;
-      handleBlinkReceive();
-      break;
-    // TODO - recognize additional modes
+      long interval;
+      readLongs(&interval, 1);
+      if (g_talkMode == serialMode) {
+        Serial.print("Interval now ");
+        Serial.println(interval);
+      }
+      if (interval < 0) interval = 2000;
+      g_blinkInterval = interval;
+      return true;
+    }
+    case ':':
+      g_commandMode = MODE_TIMER;
+      return true;
+    case '?':
+      g_commandMode = MODE_HELP;
+      return true;
     case '\0':
     default:
       g_commandMode = MODE_DEFAULT;
+      return false;
   }
 }
 
-void requestBuiltIn() {
+// ===== Built-in command dispatch =====
+// Responds to the current commandMode. Called from requestEvent() in request-response mode.
+
+void handleBuiltInCommand(wireMode mode) {
   switch(g_commandMode) {
     case MODE_IDLE:
       break;
+    case MODE_HELP:
+      if (mode == serialMode) {
+        printBuiltInHelp();
+        printCustomHelp();
+        Serial.println();
+        printPacketLayout();
+        g_commandMode = MODE_IDLE;
+      } else {
+        writeDefaultData(mode);
+      }
+      break;
     case MODE_PING:
-      handlePingRequest();
+      writePingData(mode);
       break;
     case MODE_SLOW:
-      handleSlowRequest();
+      writeSlowData(mode);
       break;
     case MODE_FAST:
-      handleFastRequest();
+      writeFastData(mode);
       break;
     case MODE_BLINK:
-      handleBlinkRequest();
+      writeBlinkData(mode);
       break;
-    // TODO - add mode handlers
+    case MODE_TIMER:
+      writeTimerData(mode);
+      break;
     case MODE_DEFAULT:
     default:
-      handleDefaultRequest();
+      writeDefaultData(mode);
   }
 }
+
+// ===== Timer (loop timing diagnostics) =====
+// Tracks how long each main loop cycle takes. Useful as a built-in diagnostic.
+unsigned long g_timerMillis = 0;
+long g_timerResults[3] = {0, 0, 0};
+
+PacketField writeTimerData(wireMode mode) {
+  unsigned long now = millis();
+  g_timerResults[0] = g_timerMillis;
+  g_timerResults[1] = now;
+  g_timerResults[2] = millis();
+  g_timerMillis = g_timerResults[2];
+  if (mode == serialMode) {
+    Serial.print("timer: ");
+  }
+  writeLongs(g_timerResults, 3, mode);
+  return {":", "Timer", 3 * (int)sizeof(long)};
+}
+
+// ===== Built-in data bundle =====
+// Writes all built-in fields for a push packet. Call from data_loop() before sensor fields.
+// Accumulates into g_packetFields[]; caller must reset g_packetFieldCount first.
+
+void data_loop_builtin(wireMode mode) {
+  g_packetFields[g_packetFieldCount++] = writePingData(mode);
+  g_packetFields[g_packetFieldCount++] = writeBlinkData(mode);
+  g_packetFields[g_packetFieldCount++] = writeTimerData(mode);
+}
+
+// ===== User hooks =====
+// Override any of these in your .ino to add sensor behaviour.
+// The weak defaults are no-ops; they are silently replaced by your definitions at link time.
+void __attribute__((weak)) setup_custom() {}
+void __attribute__((weak)) loop_custom() {}
+bool __attribute__((weak)) receive_custom(char) { return false; }
+bool __attribute__((weak)) request_custom()     { return false; }
+void __attribute__((weak)) data_loop_custom(wireMode) {}
+void __attribute__((weak)) printCustomHelp()    {}

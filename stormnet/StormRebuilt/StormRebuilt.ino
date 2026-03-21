@@ -1,73 +1,48 @@
+// StormRebuilt.ino — 2026 season sensor client
+//
+// This file is the thin glue layer between StormNet infrastructure and the
+// attached sensors. To add a sensor:
+//   1. Create MySensor.h with setupMySensor(), loopMySensor(), writeMySensorData(wireMode)
+//   2. #include it below
+//   3. Replace the Device customization section at the bottom of this file
+
 #include <Ethernet.h>
 #include <EthernetUdp.h>
-// #include <avr/wdt.h>
-
-#include "DFRobot_MatrixLidar.h"
 
 #include "StormNetCommon.h"
+#include "MatrixLidar.h"
 
-// For 2026 Rebuilt
-
-// Command modes
-const char MODE_TIMER = 6; // Give me an up-to-date timer value (for diagnostics)
-const char MODE_MATRIX_LIDAR = 7;        // your mode here
-
-// TODO: add more modes
-
-// blink control
-const int ledPin =  13;             // the number of the LED pin
-int ledState = LOW;                 // ledState used to set the LED
-unsigned long currentMillis = 0;
-unsigned long previousBlink = 0;
-unsigned long previousTransmit = 0;
-unsigned long transmitInterval = 10; // milliseconds - not sure what the right number is here.
-unsigned long timerMillis = 0;
-unsigned long timerResults[3] = {0,0,0};
-
-// TODO - what does ethernet hearbeat mean, if anything?
-const unsigned long int i2cHeartbeatTimeout = 15000; // master must talk to slave within this number of milliseconds or LED will revert to fast pulse
-volatile unsigned long previousI2C = 0;   // will store last time LED was updated
-
-// TODO - move this into the StormNetCommon code (do this when we make it a library)
-// Enter a MAC address and IP address for your controller below.
-// The IP address will be dependent on your local network:
-byte mac[] = {
-  0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED
-};
-
+// ===== Network config =====
+byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
 bool useNetwork = false;
 IPAddress ip(10, 54, 22, 177);
 IPAddress roborioIP(10, 54, 22, 2);
-const int udpPort=5423;  
+const int udpPort = 5423;
 
-#define MATRIX_LIDAR_ADDRESS 0x33
-#define MATRIX_LIDAR_BUFFER_SIZE 64
-#define MATRIX_LIDAR_BAD_VALUE 4000
-#define MATRIX_LIDAR_NUM_RESULTS 1
+// ===== Timing =====
+const int ledPin = 13;
+int ledState = LOW;
+unsigned long currentMillis = 0;
+unsigned long previousBlink = 0;
+unsigned long previousTransmit = 0;
+unsigned long previousSerialDebug = 0;
+const unsigned long transmitInterval = 10;        // ms between UDP packets
+const unsigned long serialDebugInterval = 1000;   // ms between serial packet dumps in UDP mode
+const unsigned long i2cHeartbeatTimeout = 15000;  // ms before LED goes to fast pulse
+volatile unsigned long previousI2C = 0;
 
-DFRobot_MatrixLidar_I2C tof(MATRIX_LIDAR_ADDRESS);
-uint16_t matrixLidarBuffer[MATRIX_LIDAR_BUFFER_SIZE];
-long matrixLidarResults[MATRIX_LIDAR_NUM_RESULTS] = {0};
 
-
-void setup()
-{ 
-  previousI2C = millis();           // start the timer now
+void setup() {
+  previousI2C = millis();
   previousBlink = previousI2C;
-  pinMode(ledPin, OUTPUT);          // set the digital pin as output
+  pinMode(ledPin, OUTPUT);
 
-  // Enable voltage regulator for Mega connectors
-  // pinMode(9, INPUT);
-  
-  // Apparently there isn't a way to tell whether the Serial usb is connected or not, but this should be harmless if not.
-  // note that Serial resets when the usb cable is connected, so we can be sure that setup will be called at that time
-  Serial.begin(115200);             // start serial port at 115200 bps and wait for port to open
+  Serial.begin(115200);
   Serial.println();
   Serial.println("Stormgears StormNet Diagnostic System");
   Serial.println("Hit '?' for Help");
 
   if (useNetwork) {
-    // start the Ethernet connection and the server:
     Ethernet.begin(mac, ip);
     g_udpClient.begin(udpPort);
     Serial.print("server is at ");
@@ -75,236 +50,131 @@ void setup()
   } else {
     Serial.println("Not using network. Set useNetwork to true to enable");
   }
-    
-  // Matrix sensor
-  initMatrixLidar();
 
-  digitalWrite(LED_BUILTIN, HIGH);   // turn the LED back on. Eventually the comm blink will take over
-  Serial.print("Ready");
-  // delay(3000);  // hold so we can see the steady LED indicating A-OK
+  setup_custom();
+
+  digitalWrite(LED_BUILTIN, HIGH);
+  Serial.println("Ready");
 }
 
 
-void loop()
-{   
+void loop() {
   currentMillis = millis();
-    
-  getMatrixLidarData();
-  matrixLidarResults[0] = getMatrixLidarAverage();
 
-  // Flip to serial mode if there is anything to be read. Otherwise back to I2C mode
+  // --- Sensor updates ---
+  loop_custom();
+
+  // --- Talk mode ---
   if (Serial.available()) {
     g_talkMode = serialMode;
-  }
-  else { 
-    if (useNetwork) {
-      g_talkMode = udpMode;
-    } else {
-      g_talkMode = serialMode;
-    }
+  } else {
+    g_talkMode = useNetwork ? udpMode : serialMode;
   }
 
-  //========== flash heartbeat (etc) LED =============
-  // the interrupts could change the value of g_blinkInterval which can mess with this logicL
-  //noInterrupts(); no interrupts (they don't happen) in ethernet mode
-  // Blink superfast if we haven't heard from the master in a while
-  if ( (currentMillis - previousI2C) > i2cHeartbeatTimeout)  // stale
+  // --- Heartbeat LED ---
+  if ((currentMillis - previousI2C) > i2cHeartbeatTimeout)
     g_blinkInterval = 100;
   else
-    g_blinkInterval = g_blinkInterval==100 ? 1000 : g_blinkInterval;
+    g_blinkInterval = (g_blinkInterval == 100) ? 1000 : g_blinkInterval;
 
-  boolean flipNow = ( (currentMillis - previousBlink) >= g_blinkInterval);
-  //interrupts();
-
+  boolean flipNow = ((currentMillis - previousBlink) >= g_blinkInterval);
   if (flipNow) {
-    previousBlink = currentMillis;    // save the last time you blinked the LED
-    if (ledState == LOW) {            // if the LED is off turn it on and vice-versa
-      ledState = HIGH;
-    } else {
-      ledState = LOW;
-    }
-    digitalWrite(ledPin, ledState);   // set the LED with the ledState of the variable
+    previousBlink = currentMillis;
+    ledState = (ledState == LOW) ? HIGH : LOW;
+    digitalWrite(ledPin, ledState);
   }
 
-  // Check for serial input.  Note that i2c input happens through interrupts, not here.
-  if (g_talkMode == serialMode && Serial.available() > 0) { //diagnostic menu system starts here
-    receiveEvent(5); // call the interrupt handler directly.  We may or may not read this many bytes
+  // --- Serial input ---
+  if (g_talkMode == serialMode && Serial.available() > 0) {
+    receiveEvent(5);
     requestEvent();
   }
 
-  // The trouble with mixed-mode communication is that you don't know whether the other side is going to try
-  // to read the *prior* message that was sent as a response to its request. So skip this until a better protocol can be worked out
-
-  if ( (currentMillis - previousTransmit > transmitInterval) ) {
-    if (useNetwork) {
-      send_loop();
-    } else {
-      data_loop();
-      delay(1000);
-    }
-    previousTransmit = currentMillis;  // reset
+  // --- Transmit UDP ---
+  if (useNetwork && (currentMillis - previousTransmit) > transmitInterval) {
+    send_loop();
+    previousTransmit = currentMillis;
   }
 
+  // --- Serial output ---
+  if ((currentMillis - previousSerialDebug) >= serialDebugInterval) {
+    data_loop(serialMode);
+    previousSerialDebug = currentMillis;
+  }
 }
 
 
-// UDP Mode command loop
+// Wraps data_loop() in a UDP packet
 void send_loop() {
-  // It seems to take a while for the client connection to drop once it has been disconnected from the robot side
-  // Lets try UDP instead
-
-  if (g_udpClient.beginPacket(roborioIP, udpPort) ) {
-    data_loop();
-    
+  if (g_udpClient.beginPacket(roborioIP, udpPort)) {
+    data_loop(udpMode);
     if (!g_udpClient.endPacket()) {
       Serial.write("Error ending packet!");
     }
-  }
-  else {
-    Serial.write("Error beginning packet!");  
-  }
-}
-
-
-void data_loop() {
-    // This must match what is expected on the server side
-    handlePingRequest();  // "P", 1 * 1 bytes;  offset 0 + 1 = 1
-    handleFastRequest();  // "F", 1 * 4 bytes;  offset 1 + 4 = 5
-    handleSlowRequest();  // "S", 1 * 4 bytes;  offset 5 + 4 = 9
-    handleBlinkRequest(); // "B", 1 * 4 bytes;  offset 9 + 4 = 13
-    handleMatrixLidarRequest(); // "M", 1 * 4 bytes;  offset 13 + 4 = 17
-    handleTimerRequest(); // ":", 3 * 4 bytes;  offset 17 + 12 = 29
-//    // length 29
-}
-
-
-// function that executes whenever data is requested by master
-// this function is registered as an event, see setup()
-// this function can also be called at other times (say via events coming through Serial)
-void requestEvent() {
-  previousI2C = currentMillis;      // reset the comm timeout clock
-
-  switch(g_commandMode) {
-// TODO - new modes
-//    case MODE_X:
-//      handleXRequest();
-//      break;
-    case MODE_TIMER:
-      handleTimerRequest();
-      break;
-    case MODE_MATRIX_LIDAR:
-      handleMatrixLidarRequest();
-      break;
-    case MODE_HELP:
-      handleHelpRequest();
-      break;
-    default:
-      requestBuiltIn();
+  } else {
+    Serial.write("Error beginning packet!");
   }
 }
 
-//================================
-void receiveEvent(int howMany) { // handles i2c write event from master
+
+// Defines the packet layout — must match server-side expectations.
+// Call printPacketLayout() (via '?' command) to see the current layout.
+void data_loop(wireMode mode) {
+  g_packetFieldCount = 0;
+  data_loop_builtin(mode);
+  data_loop_custom(mode);
+}
+
+
+void receiveEvent(int howMany) {
   char c = 0;
-  // reset the comm timeout clock
   previousI2C = currentMillis;
 
   if (howMany > 0) c = readByte();
-  switch (c) {
-// TODO - new modes
-//    case 'X':
-//      g_commandMode = MODE_X;
-//      break;
-    case ':' :
-        g_commandMode = MODE_TIMER;
-        break;
-    case 'M':
-        g_commandMode = MODE_MATRIX_LIDAR;
-        break;
-    case '?':
-      g_commandMode = MODE_HELP;
-      break;
-    default:
-      receiveBuiltIn(c);
-  }
+  if (!receiveBuiltIn(c)) receive_custom(c);
 
-  while (readAvailable()) c=readByte(); // in case there is other stuff sent that needs to be collected - don't expect this
+  while (readAvailable()) c = readByte();
 }
 
-// Use this if the sensors end up locking up the device. 
-// void hardReset() {
-//   wdt_enable(WDTO_15MS);
-//   while(1) {}
-// }
 
-//COMMAND PROCESSORS HERE
+void requestEvent() {
+  previousI2C = currentMillis;
 
-//================================
-void handleHelpRequest() {
-  if (g_talkMode == serialMode) {
-    printBuiltInHelp();
-    Serial.println("    ::  (colon) Return time details");
-    Serial.println("    M:  Print matrix lidar values");
-
-    g_commandMode = MODE_IDLE;  // This only makes sense in g_talkMode == serialMode
-  }
-  else // move on - nothing to see here
-    handleDefaultRequest();
+  if (!request_custom()) handleBuiltInCommand(g_talkMode);
 }
 
-void handleTimerRequest() {
-  timerResults[0] = timerMillis;   // The last time we got a time report
-  timerResults[1] = currentMillis; // The beginning of the current loop
-  timerResults[2] = millis();      // right now (which is hopefully close to the current loop time(
 
-  timerMillis = timerResults[2];
-  if (g_talkMode == serialMode) {
-    Serial.print("timer request: ");
-  }
-  writeLongs((long*)timerResults, 3, g_talkMode);
+// ===== Device customization =====
+// Replace this section to target a different sensor.
+// Do not modify the infrastructure functions above.
+
+const char MODE_MATRIX_LIDAR = FIRST_CUSTOM_MODE;
+
+void setup_custom() {
+  setupMatrixLidar();
 }
 
-void handleMatrixLidarRequest() {
-  if (g_talkMode == serialMode) {
-    Serial.print("matrix lidar request: ");
-  }
-
-  writeLongs((long*)matrixLidarResults, MATRIX_LIDAR_NUM_RESULTS, g_talkMode);
+void loop_custom() {
+  loopMatrixLidar(); 
 }
 
-void initMatrixLidar() {
-  while(tof.begin() != 0){
-    Serial.println("begin error !!!!!");
-  }
-  Serial.println("begin success");
-  //config matrix mode
-  while(tof.setRangingMode(eMatrix_8X8) != 0){
-    Serial.println("init error !!!!!");
-    delay(1000);
-  }
-  Serial.println("init success");
+bool receive_custom(char c) {
+  if (c == 'M') { g_commandMode = MODE_MATRIX_LIDAR; return true; }
+  return false;
 }
 
-void getMatrixLidarData() {
-  tof.getAllData(matrixLidarBuffer);
+bool request_custom() {
+  if (g_commandMode == MODE_MATRIX_LIDAR) {
+    handleMatrixLidar();
+    return true;
+  }
+  return false;
 }
 
-long getMatrixLidarAverage() {
-  int count = 0;
-  long sum = 0;
-  long value = 0;
+void data_loop_custom(wireMode mode) {
+  g_packetFields[g_packetFieldCount++] = writeMatrixLidarData(mode);
+}
 
-  for(uint8_t i = 0; i < 8; i++){
-    for(uint8_t j = 0; j < 8; j++){
-      value = matrixLidarBuffer[i * 8 + j];
-      
-      if (value != MATRIX_LIDAR_BAD_VALUE) {
-        sum += value;
-        count++;
-      }
-    }
-  }
-
-  if (count == 0) return -1;
-  else return sum / count;
+void printCustomHelp() {
+  Serial.println("    M:  Print matrix lidar values");
 }
